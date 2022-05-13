@@ -344,6 +344,10 @@ file      vm/kmalloc.c
 
 optofffile dumbvm   vm/addrspace.c
 
+defoption paging
+
+#add files that we will create here
+
 #
 # Network
 # (nothing here yet)
