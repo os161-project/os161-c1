@@ -107,6 +107,12 @@ boot(void)
 
 	/* Early initialization. */
 	ram_bootstrap();
+	/* 
+	* VM Initialization should be moved from late to early initialization
+	* in order to provide full support to kfree(). Given the fact that it requires
+	* to know ram details, it must be initialized after the ram.
+	*/
+	vm_bootstrap();
 	proc_bootstrap();
 	thread_bootstrap();
 	hardclock_bootstrap();
@@ -124,7 +130,6 @@ boot(void)
 	kheap_nextgeneration();
 
 	/* Late phase of initialization. */
-	vm_bootstrap();
 	kprintf_bootstrap();
 	thread_start_cpus();
 
