@@ -64,10 +64,57 @@
  */
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 
+/*
+* Bitmap for tracking physical memory frames
+* freeRamFrames[i] = 1 means that the frame has been freed from previous allocation
+*/ 
+static unsigned char *freeRamFrames = NULL;
+
+/*
+* Array for tracking allocation size (in n.pages) for each allocation done	
+*/ 
+static unsigned long *allocSize = NULL;
+
+static int nRamFrames = 0;
+
+/*
+* Moreover, another lock is needed to be sure to access in mutual exclusion the previous data structures.
+*/
+static struct spinlock freemem_lock = SPINLOCK_INITIALIZER;
+
+static int allocTableActive = 0;
+
+static int isTableActive() {
+	int active;
+	spinlock_acquire(&freemem_lock);
+	active = allocTableActive;
+	spinlock_release(&freemem_lock);
+	return active;
+}
+
 void
 vm_bootstrap(void)
 {
-	/* Do nothing. */
+	int i = 0;
+	// Get total number of RAM frames
+	nRamFrames 		= ((int)ram_getsize())/PAGE_SIZE;
+	// Allocating freeRamFrames and allocSize arrays
+	freeRamFrames	= (unsigned char*) kmalloc(nRamFrames*sizeof(unsigned char));
+	allocSize 		= (unsigned long*) kmalloc(nRamFrames*sizeof(unsigned long));
+	if(freeRamFrames == NULL || allocSize == NULL) {
+		// Allocation of data structures failed, disable this vm manager
+		freeRamFrames = NULL; 
+		allocSize = NULL;
+		return;
+	}
+	for(i = 0; i < nRamFrames; i++) {
+		freeRamFrames[i] = (unsigned char) 0;
+		allocSize[i] = 0;
+	}
+	// At this point I can activate tables 
+	spinlock_acquire(&freemem_lock);
+	allocTableActive = 1;
+	spinlock_release(&freemem_lock);
 }
 
 /*
@@ -90,18 +137,82 @@ dumbvm_can_sleep(void)
 	}
 }
 
+static 
+paddr_t
+getfreeppages(unsigned long npages) 
+{
+	paddr_t addr;
+	long i, first, found, np = (long) npages;
+	// If VM bootstrap not done, only thing we can do is stealing memory to ram
+	if(!isTableActive()) {
+		return 0;
+	}
+	// We need to acquire the lock, because we need freeRamFrames in a stable state for doing a search
+	// of contiguous free pages
+	// Note: in this implementation, both user and kernel ask for contiguous space
+	spinlock_acquire(&freemem_lock);
+	for(i = 0, first = found = -1; i < nRamFrames; i++) {
+		if(freeRamFrames[i]) {
+			if(i == 0 || ! freeRamFrames[i-1]) {
+				first = i;
+			}
+			if(i - first + 1 > np) {
+				found = first;
+			} 
+		} 
+	}
+	if(found >= 0) {
+		for(i = found; i < found + np; i++) {
+			// Mark frames as taken
+			freeRamFrames[i] = (unsigned char) 0;
+		}
+		allocSize[found] = np;
+		addr = (paddr_t) found * PAGE_SIZE;
+	} else {
+		addr = 0;
+	}
+
+	spinlock_release(&freemem_lock);
+
+	return addr;
+}
+
 static
 paddr_t
 getppages(unsigned long npages)
 {
 	paddr_t addr;
-
-	spinlock_acquire(&stealmem_lock);
-
-	addr = ram_stealmem(npages);
-
-	spinlock_release(&stealmem_lock);
+	/* lock for freed pages first */
+	/* Note: at bootstrap no memory has already been stolen and so there couldn't be availalble RAM frames */
+	addr = getfreeppages(npages);
+	if(addr == 0) { /* call stealmem, no freed pages are available */
+		spinlock_acquire(&stealmem_lock);
+		addr = ram_stealmem(npages);
+		spinlock_release(&stealmem_lock);
+	} else if (addr != 0 && isTableActive()) {
+		spinlock_acquire(&freemem_lock);
+		allocSize[addr/PAGE_SIZE] = npages;
+		spinlock_release(&freemem_lock);
+	}
 	return addr;
+}
+
+static
+int
+freeppages(paddr_t addr, unsigned long npages) {
+	long i, first, np = (long)npages;
+	if(!isTableActive()) return 0;
+	first = addr/PAGE_SIZE;
+	KASSERT(allocSize!=NULL);
+	KASSERT(nRamFrames>first);
+
+	spinlock_acquire(&freemem_lock);
+	for(i=first; i<first+np; i++) {
+		freeRamFrames[i] = (unsigned char) 1;
+	}
+	spinlock_release(&freemem_lock);
+
+	return 1;
 }
 
 /* Allocate/free some kernel-space virtual pages */
@@ -121,9 +232,12 @@ alloc_kpages(unsigned npages)
 void
 free_kpages(vaddr_t addr)
 {
-	/* nothing - leak the memory. */
-
-	(void)addr;
+	if(isTableActive()) {
+		paddr_t paddr = addr - MIPS_KSEG0;
+		long first = paddr/PAGE_SIZE;
+		KASSERT(nRamFrames>first);
+		freeppages(paddr, allocSize[first]);
+	}
 }
 
 void
@@ -257,6 +371,9 @@ void
 as_destroy(struct addrspace *as)
 {
 	dumbvm_can_sleep();
+	freeppages(as->as_pbase1, as->as_npages1);
+	freeppages(as->as_pbase2, as->as_npages2);
+	freeppages(as->as_stackpbase, DUMBVM_STACKPAGES);
 	kfree(as);
 }
 
@@ -344,16 +461,19 @@ as_prepare_load(struct addrspace *as)
 
 	dumbvm_can_sleep();
 
+	// Get pages for first segment (i.e. code segment)
 	as->as_pbase1 = getppages(as->as_npages1);
 	if (as->as_pbase1 == 0) {
 		return ENOMEM;
 	}
 
+	// Get pages for second segment (i.e. data segment)
 	as->as_pbase2 = getppages(as->as_npages2);
 	if (as->as_pbase2 == 0) {
 		return ENOMEM;
 	}
 
+	// Get pages for third segment (i.e. stack segment), with fixed size
 	as->as_stackpbase = getppages(DUMBVM_STACKPAGES);
 	if (as->as_stackpbase == 0) {
 		return ENOMEM;
