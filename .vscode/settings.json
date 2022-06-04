@@ -16,6 +16,7 @@
         "ostream": "c",
         "sstream": "c",
         "streambuf": "c",
-        "unistd.h": "c"
+        "unistd.h": "c",
+        "current.h": "c"
     }
 }

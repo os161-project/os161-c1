@@ -9,7 +9,6 @@
 *    -> ssize_t write(int filehandle, const void *buf, size_t size);
 */
 
-
 uint32_t sys_write(int fd, const void* buf, size_t size) {
     if(fd == STDOUT_FILENO || fd == STDERR_FILENO) {
         for(uint32_t i = 0; i < size; i++) {

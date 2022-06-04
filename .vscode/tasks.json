@@ -6,25 +6,25 @@
         {
             "label": "Copy Config",
             "type": "shell",
-            "command": "cp ${env:HOME}/os161-c1/src/kern/conf/DUMBVM ${env:HOME}/os161/src/kern/conf/${input:VersionName}",
+            "command": "cp ${env:HOME}/os161/src/kern/conf/DUMBVM ${env:HOME}/os161/src/kern/conf/${input:VersionName}",
             "problemMatcher": []
         },
         {
             "label": "Run Config",
             "type": "shell",
-            "command": "cd ${env:HOME}/os161-c1/src/kern/conf/;./config ${input:VersionName}",
+            "command": "cd ${env:HOME}/os161/src/kern/conf/;./config ${input:VersionName}",
             "problemMatcher": []
         },
         {
             "label": "Make Depend",
             "type": "shell",
-            "command": "cd ${env:HOME}/os161-c1/src/kern/compile/${input:VersionName};bmake depend",
+            "command": "cd ${env:HOME}/os161/src/kern/compile/${input:VersionName};bmake depend",
             "problemMatcher": []
         },
         {
             "label": "Build and Install",
             "type": "shell",
-            "command": "cd ${env:HOME}/os161-c1/src/kern/compile/${input:VersionName};bmake;bmake install",
+            "command": "cd ${env:HOME}/os161/src/kern/compile/${input:VersionName};bmake;bmake install",
             "problemMatcher": [],
             "group": {
                 "kind": "build",
@@ -34,13 +34,13 @@
         {
             "label": "Run OS161",
             "type": "shell",
-            "command": "cd ${env:HOME}/os161-c1/root;sys161 -w kernel",
+            "command": "cd ${env:HOME}/os161/root;sys161 -w kernel",
             "problemMatcher": []
         },
         {
             "label": "Run OS161 (no debug)",
             "type": "shell",
-            "command": "cd ${env:HOME}/os161-c1/root;sys161 kernel",
+            "command": "cd ${env:HOME}/os161/root;sys161 kernel",
             "problemMatcher": []
         }
     ],

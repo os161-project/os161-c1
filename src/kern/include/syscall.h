@@ -60,5 +60,6 @@ int sys_reboot(int code);
 int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
 uint32_t sys_write(int fd, const void* buf, size_t size);
 uint32_t sys_read(int fd, void* buf, size_t size);
+int sys__exit(int status);
 
 #endif /* _SYSCALL_H_ */

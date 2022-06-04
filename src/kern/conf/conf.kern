@@ -445,4 +445,5 @@ file		test/fstest.c
 optfile net	test/nettest.c
 
 defoption syssupport
-optfile     syssupport  syscall/file_syscalls.c
+optfile syssupport  syscall/file_syscalls.c
+optfile syssupport  syscall/proc_syscalls.c    
