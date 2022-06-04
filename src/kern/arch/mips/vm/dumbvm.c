@@ -38,6 +38,7 @@
 #include <mips/tlb.h>
 #include <addrspace.h>
 #include <vm.h>
+#include "opt-early_stealer.h"
 
 /*
  * Dumb MIPS-only "VM system" that is intended to only be just barely
@@ -98,6 +99,26 @@ vm_bootstrap(void)
 	int i = 0;
 	// Get total number of RAM frames
 	nRamFrames 		= ((int)ram_getsize())/PAGE_SIZE;
+	#if OPT_EARLY_STEALER 
+	paddr_t firstpaddr, paddr;
+	firstpaddr = ram_getfirstfree();
+	int first = (int) firstpaddr/PAGE_SIZE;
+	// Mark first (kernel data) frames as taken.
+	for(i = 0; i < first; i++) {
+		freeRamFrames[i] = (unsigned char) 0;
+		allocSize[i] = 0;
+	}
+	// Mark other frames as free.
+	for(i = first; i < nRamFrames; i++) {
+		freeRamFrames[i] = (unsigned char) 1;
+		allocSize[i] = 0;
+	}
+	// Stealing all the memory at bootstrap-time
+	spinlock_acquire(&stealmem_lock);
+	paddr = ram_stealmem(nRamFrames);
+	spinlock_release(&stealmem_lock);
+	KASSERT(paddr==ram_getsize());
+	#endif
 	// Allocating freeRamFrames and allocSize arrays
 	freeRamFrames	= (unsigned char*) kmalloc(nRamFrames*sizeof(unsigned char));
 	allocSize 		= (unsigned long*) kmalloc(nRamFrames*sizeof(unsigned long));
@@ -185,11 +206,23 @@ getppages(unsigned long npages)
 	/* lock for freed pages first */
 	/* Note: at bootstrap no memory has already been stolen and so there couldn't be availalble RAM frames */
 	addr = getfreeppages(npages);
+#if OPT_EARLY-STEALER
+	// Here getfreeppages needs to do some work.
+	// If it return addr == 0, it means that there's no more memory available.
+	// So, given the fact that we don't already have an algorithm for deciding 
+	// which frame should be evicted from memory (a page replacement algorithm),
+	// if memory is full what we can do is to raise a panic error.
+	if(addr == 0) {
+		panic("No more physical memory is available.");
+	} 
+#else
 	if(addr == 0) { /* call stealmem, no freed pages are available */
 		spinlock_acquire(&stealmem_lock);
 		addr = ram_stealmem(npages);
 		spinlock_release(&stealmem_lock);
-	} else if (addr != 0 && isTableActive()) {
+	}
+#endif 
+	else if (addr != 0 && isTableActive()) {
 		spinlock_acquire(&freemem_lock);
 		allocSize[addr/PAGE_SIZE] = npages;
 		spinlock_release(&freemem_lock);
