@@ -344,8 +344,6 @@ file      vm/kmalloc.c
 
 optofffile dumbvm   vm/addrspace.c
 
-defoption paging
-
 #add files that we will create here
 
 #
@@ -445,3 +443,6 @@ file		test/semunit.c
 file		test/kmalloctest.c
 file		test/fstest.c
 optfile net	test/nettest.c
+
+defoption syssupport
+optfile     syssupport  syscall/file_syscalls.c
