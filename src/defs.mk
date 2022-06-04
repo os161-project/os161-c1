@@ -13,7 +13,7 @@
 # The things that can be set here are documented in mk/os161.config.mk.
 #
 
-OSTREE=/home/os161user/os161/root
+OSTREE=/home/os161user/os161-c1/root
 PLATFORM=sys161
 MACHINE=mips
 COMPAT_CFLAGS= -DNEED_NTOHLL
