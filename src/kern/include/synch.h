@@ -39,6 +39,9 @@
 #ifndef OPT_SEM_LOCK
 #include "opt-sem_lock.h"
 #endif
+#ifndef OPT_WCHAN_LOCK
+#include "opt-wchan_lock.h"
+#endif
 
 /*
  * Dijkstra-style semaphore.
@@ -79,11 +82,13 @@ struct lock {
         char *lk_name;
         HANGMAN_LOCKABLE(lk_hangman);   /* Deadlock detector hook. */
         struct thread *owner;
+        struct spinlock *me; // For accessing counter in mutual exclusion
 #if OPT_SEM_LOCK
         struct semaphore *sem;
         volatile int counter;
-        struct spinlock *me; // For accessing counter in mutual exclusion
 #elif OPT_WCHAN_LOCK
+        struct wchan *wch;
+        volatile int counter;
 #endif
         // (don't forget to mark things volatile as needed)
 };

@@ -19,6 +19,7 @@
         "unistd.h": "c",
         "current.h": "c",
         "bitmap.h": "c",
-        "spl.h": "c"
+        "spl.h": "c",
+        "thread.h": "c"
     }
 }

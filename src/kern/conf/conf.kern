@@ -471,3 +471,9 @@ defoption sem_lock
 # like in dumbvm option, not include vm/addrspace.c to make dumbvm work
 #
 optofffile sem_lock vm/addrspace.c
+
+defoption wchan_lock
+#
+# like in dumbvm option, not include vm/addrspace.c to make dumbvm work
+#
+optofffile wchan_lock vm/addrspace.c
