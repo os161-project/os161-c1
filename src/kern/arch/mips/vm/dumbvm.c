@@ -38,7 +38,11 @@
 #include <mips/tlb.h>
 #include <addrspace.h>
 #include <vm.h>
+#include <bitmap.h>
 #include "opt-early_stealer.h"
+#ifndef OPT_EARLY_STEALER 
+#include "opt-bitmap_ram.h"
+#endif
 
 /*
  * Dumb MIPS-only "VM system" that is intended to only be just barely
@@ -69,7 +73,11 @@ static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 * Bitmap for tracking physical memory frames
 * freeRamFrames[i] = 1 means that the frame has been freed from previous allocation
 */ 
+#if OPT_BITMAP_RAM // Using a real-bitmap
+struct bitmap *freeRamFrames;
+#else 
 static unsigned char *freeRamFrames = NULL;
+#endif
 
 /*
 * Array for tracking allocation size (in n.pages) for each allocation done	
@@ -100,7 +108,11 @@ vm_bootstrap(void)
 	// Get total number of RAM frames
 	nRamFrames 		= ((int)ram_getsize())/PAGE_SIZE;
 	// Allocating freeRamFrames and allocSize arrays
+#if OPT_BITMAP_RAM
+	freeRamFrames 	= (struct bitmap*) bitmap_create(nRamFrames);
+#else
 	freeRamFrames	= (unsigned char*) kmalloc(nRamFrames*sizeof(unsigned char));
+#endif
 	allocSize 		= (unsigned long*) kmalloc(nRamFrames*sizeof(unsigned long));
 	if(freeRamFrames == NULL || allocSize == NULL) {
 		// Allocation of data structures failed, disable this vm manager
@@ -108,7 +120,7 @@ vm_bootstrap(void)
 		allocSize = NULL;
 		return;
 	}
-	#if OPT_EARLY_STEALER 
+#if OPT_EARLY_STEALER 
 	paddr_t firstpaddr, paddr;
 	firstpaddr = ram_getfirstfree();
 	int first = (int) firstpaddr/PAGE_SIZE;
@@ -127,12 +139,16 @@ vm_bootstrap(void)
 	paddr = ram_stealmem(nRamFrames-first);
 	spinlock_release(&stealmem_lock);
 	KASSERT(paddr==firstpaddr);
-	#else
+#else
 	for(i = 0; i < nRamFrames; i++) {
+#if OPT_BITMAP_RAM
+		bitmap_unmark((struct bitmap*) freeRamFrames, i);
+#else		
 		freeRamFrames[i] = (unsigned char) 0;
+#endif
 		allocSize[i] = 0;
 	}
-	#endif
+#endif
 	// At this point I can activate tables 
 	spinlock_acquire(&freemem_lock);
 	allocTableActive = 1;
@@ -173,6 +189,28 @@ getfreeppages(unsigned long npages)
 	// of contiguous free pages
 	// Note: in this implementation, both user and kernel ask for contiguous space
 	spinlock_acquire(&freemem_lock);
+#if OPT_BITMAP_RAM
+	for(i = 0, first = found = -1; i < nRamFrames; i++) {
+		if(bitmap_isset((struct bitmap*) freeRamFrames, i)) {
+			if(i == 0 || ! bitmap_isset((struct bitmap*) freeRamFrames, i-1)) {
+				first = i;
+			}
+			if(i - first + 1 > np) {
+				found = first;
+			} 
+		} 
+	}
+	if(found >= 0) {
+		for(i = found; i < found + np; i++) {
+			// Mark frames as taken
+			bitmap_unmark((struct bitmap*) freeRamFrames, i);
+		}
+		allocSize[found] = np;
+		addr = (paddr_t) found * PAGE_SIZE;
+	} else {
+		addr = 0;
+	}	
+#else		
 	for(i = 0, first = found = -1; i < nRamFrames; i++) {
 		if(freeRamFrames[i]) {
 			if(i == 0 || ! freeRamFrames[i-1]) {
@@ -193,7 +231,7 @@ getfreeppages(unsigned long npages)
 	} else {
 		addr = 0;
 	}
-
+#endif
 	spinlock_release(&freemem_lock);
 
 	return addr;
@@ -207,14 +245,22 @@ getppages(unsigned long npages)
 	/* lock for freed pages first */
 	/* Note: at bootstrap no memory has already been stolen and so there couldn't be availalble RAM frames */
 	addr = getfreeppages(npages);
-#if OPT_EARLY-STEALER
+#if OPT_EARLY_STEALER
 	// Here getfreeppages needs to do some work.
 	// If it return addr == 0, it means that there's no more memory available.
 	// So, given the fact that we don't already have an algorithm for deciding 
 	// which frame should be evicted from memory (a page replacement algorithm),
 	// if memory is full what we can do is to raise a panic error.
-	if(addr == 0) {
+	if(addr == 0 && isTableActive()) {
 		panic("No more physical memory is available.");
+	}
+	// In the early-stealer approach, I can steal memory (because I actually have it
+	// only before the table is active, because I need memory for allocating kernel data
+	// structures).
+	else if(addr == 0 && !isTableActive()) { /* call stealmem, no freed pages are available */
+		spinlock_acquire(&stealmem_lock);
+		addr = ram_stealmem(npages);
+		spinlock_release(&stealmem_lock);
 	} 
 #else
 	if(addr == 0) { /* call stealmem, no freed pages are available */
@@ -243,7 +289,11 @@ freeppages(paddr_t addr, unsigned long npages) {
 
 	spinlock_acquire(&freemem_lock);
 	for(i=first; i<first+np; i++) {
+#if OPT_BITMAP_RAM
+		bitmap_mark((struct bitmap*) freeRamFrames, i);
+#else
 		freeRamFrames[i] = (unsigned char) 1;
+#endif
 	}
 	spinlock_release(&freemem_lock);
 

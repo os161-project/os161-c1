@@ -17,6 +17,7 @@
         "sstream": "c",
         "streambuf": "c",
         "unistd.h": "c",
-        "current.h": "c"
+        "current.h": "c",
+        "bitmap.h": "c"
     }
 }

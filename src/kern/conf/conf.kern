@@ -459,3 +459,9 @@ defoption early_stealer
 # like in dumbvm option, not include vm/addrspace.c to make dumbvm work
 #
 optofffile early_stealer   vm/addrspace.c
+
+defoption bitmap_ram
+#
+# like in dumbvm option, not include vm/addrspace.c to make dumbvm work
+#
+optofffile bitmap_ram   vm/addrspace.c

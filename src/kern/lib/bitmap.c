@@ -153,7 +153,10 @@ bitmap_unmark(struct bitmap *b, unsigned index)
         KASSERT(index < b->nbits);
         bitmap_translate(index, &ix, &mask);
 
-        KASSERT((b->v[ix] & mask)!=0);
+        // I don't need this KASSERT for my implementation, 
+        // 'cause I'm setting the bit to initialize the structure and until
+        // this point I don't know anything about the state of the bitmap.
+        // KASSERT((b->v[ix] & mask)!=0);
         b->v[ix] &= ~mask;
 }
 
