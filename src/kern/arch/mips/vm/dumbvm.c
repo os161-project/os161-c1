@@ -99,6 +99,15 @@ vm_bootstrap(void)
 	int i = 0;
 	// Get total number of RAM frames
 	nRamFrames 		= ((int)ram_getsize())/PAGE_SIZE;
+	// Allocating freeRamFrames and allocSize arrays
+	freeRamFrames	= (unsigned char*) kmalloc(nRamFrames*sizeof(unsigned char));
+	allocSize 		= (unsigned long*) kmalloc(nRamFrames*sizeof(unsigned long));
+	if(freeRamFrames == NULL || allocSize == NULL) {
+		// Allocation of data structures failed, disable this vm manager
+		freeRamFrames = NULL; 
+		allocSize = NULL;
+		return;
+	}
 	#if OPT_EARLY_STEALER 
 	paddr_t firstpaddr, paddr;
 	firstpaddr = ram_getfirstfree();
@@ -115,23 +124,15 @@ vm_bootstrap(void)
 	}
 	// Stealing all the memory at bootstrap-time
 	spinlock_acquire(&stealmem_lock);
-	paddr = ram_stealmem(nRamFrames);
+	paddr = ram_stealmem(nRamFrames-first);
 	spinlock_release(&stealmem_lock);
-	KASSERT(paddr==ram_getsize());
-	#endif
-	// Allocating freeRamFrames and allocSize arrays
-	freeRamFrames	= (unsigned char*) kmalloc(nRamFrames*sizeof(unsigned char));
-	allocSize 		= (unsigned long*) kmalloc(nRamFrames*sizeof(unsigned long));
-	if(freeRamFrames == NULL || allocSize == NULL) {
-		// Allocation of data structures failed, disable this vm manager
-		freeRamFrames = NULL; 
-		allocSize = NULL;
-		return;
-	}
+	KASSERT(paddr==firstpaddr);
+	#else
 	for(i = 0; i < nRamFrames; i++) {
 		freeRamFrames[i] = (unsigned char) 0;
 		allocSize[i] = 0;
 	}
+	#endif
 	// At this point I can activate tables 
 	spinlock_acquire(&freemem_lock);
 	allocTableActive = 1;
@@ -223,6 +224,7 @@ getppages(unsigned long npages)
 	}
 #endif 
 	else if (addr != 0 && isTableActive()) {
+		// But this is already done inside getfreeppages, isnt't it?
 		spinlock_acquire(&freemem_lock);
 		allocSize[addr/PAGE_SIZE] = npages;
 		spinlock_release(&freemem_lock);
