@@ -42,6 +42,18 @@
             "type": "shell",
             "command": "cd ${env:HOME}/os161/root;sys161 kernel",
             "problemMatcher": []
+        },
+        {
+            "label": "Build, Install and Run OS161 (no debug)",
+            "type": "shell",
+            "command": "cd ${env:HOME}/os161/src/kern/compile/${input:VersionName};bmake;bmake install;cd ${env:HOME}/os161/root;sys161 kernel",
+            "problemMatcher": []
+        },
+        {
+            "label": "Build, Install and Run OS161",
+            "type": "shell",
+            "command": "cd ${env:HOME}/os161/src/kern/compile/${input:VersionName};bmake;bmake install;cd ${env:HOME}/os161/root;sys161 -w kernel",
+            "problemMatcher": []
         }
     ],
     "inputs": [
