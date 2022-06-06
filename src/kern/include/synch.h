@@ -42,6 +42,9 @@
 #ifndef OPT_WCHAN_LOCK
 #include "opt-wchan_lock.h"
 #endif
+#ifndef OPT_CV
+#include "opt-cv.h"
+#endif
 
 /*
  * Dijkstra-style semaphore.
@@ -128,7 +131,11 @@ bool lock_do_i_hold(struct lock *);
 
 struct cv {
         char *cv_name;
-        // add what you need here
+#if OPT_CV
+        struct wchan *wch;
+        struct spinlock *slk;
+#else
+#endif
         // (don't forget to mark things volatile as needed)
 };
 

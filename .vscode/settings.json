@@ -20,6 +20,8 @@
         "current.h": "c",
         "bitmap.h": "c",
         "spl.h": "c",
-        "thread.h": "c"
+        "thread.h": "c",
+        "functional": "cpp",
+        "type_traits": "cpp"
     }
 }

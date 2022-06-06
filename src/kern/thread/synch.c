@@ -45,6 +45,9 @@
 #ifndef OPT_WCHAN_LOCK
 #include "opt-wchan_lock.h"
 #endif
+#ifndef OPT_CV
+#include "opt-cv.h"
+#endif
 
 ////////////////////////////////////////////////////////////
 //
@@ -280,9 +283,13 @@ cv_create(const char *name)
                 kfree(cv);
                 return NULL;
         }
-
-        // add stuff here as needed
-
+#if OPT_CV
+        cv->wch = wchan_create("cv_wchan");
+        cv->slk = (struct spinlock *) kmalloc(sizeof(struct spinlock));
+        KASSERT(cv->slk != NULL);
+        spinlock_init(cv->slk);
+#else 
+#endif
         return cv;
 }
 
@@ -290,9 +297,12 @@ void
 cv_destroy(struct cv *cv)
 {
         KASSERT(cv != NULL);
-
-        // add stuff here as needed
-
+#if OPT_CV
+        wchan_destroy(cv->wch);
+        spinlock_cleanup(cv->slk);
+        kfree(cv->slk);
+#else
+#endif
         kfree(cv->cv_name);
         kfree(cv);
 }
@@ -301,22 +311,54 @@ void
 cv_wait(struct cv *cv, struct lock *lock)
 {
         // Write this
+        KASSERT(cv != NULL && lock != NULL);
+#if OPT_CV
+        KASSERT(lock_do_i_hold(lock));
+        // The spinlock for mutual exclusion must be acquired before releasing the
+        // lock. Otherwise we could have a deadlock condition: when releasing the lock
+        // we must be sure we can go to sleep. So, we need to first acquire the spinlock.
+        spinlock_acquire(cv->slk); // This is needed for avoiding that another thread acquires the lock before the current thread goes to sleep on wchan_sleep.
+        lock_release(lock);
+        wchan_sleep(cv->wch, cv->slk);
+        // slk lock must be released before calling lock_acquire, 
+        // otherwise we will go to sleep (inside lock_acquire), having already acquire two spinlocks,
+        // which will 'cause a kernel error.
+        spinlock_release(cv->slk);
+        lock_acquire(lock);
+#else
         (void)cv;    // suppress warning until code gets written
         (void)lock;  // suppress warning until code gets written
+#endif
 }
 
 void
 cv_signal(struct cv *cv, struct lock *lock)
 {
         // Write this
-	(void)cv;    // suppress warning until code gets written
-	(void)lock;  // suppress warning until code gets written
+        KASSERT(cv != NULL && lock != NULL);
+#if OPT_CV
+        KASSERT(lock_do_i_hold(lock));
+        spinlock_acquire(cv->slk);
+        wchan_wakeone(cv->wch, cv->slk);
+        spinlock_release(cv->slk);
+#else
+        (void)cv;    // suppress warning until code gets written
+        (void)lock;  // suppress warning until code gets written
+#endif
 }
 
 void
 cv_broadcast(struct cv *cv, struct lock *lock)
 {
-	// Write this
-	(void)cv;    // suppress warning until code gets written
-	(void)lock;  // suppress warning until code gets written
+        // Write this
+        KASSERT(cv != NULL && lock != NULL);
+#if OPT_CV
+        KASSERT(lock_do_i_hold(lock));
+        spinlock_acquire(cv->slk);
+        wchan_wakeall(cv->wch, cv->slk);
+        spinlock_release(cv->slk);
+#else
+        (void)cv;    // suppress warning until code gets written
+        (void)lock;  // suppress warning until code gets written
+#endif
 }
