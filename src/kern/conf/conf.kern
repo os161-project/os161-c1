@@ -346,6 +346,12 @@ optofffile dumbvm   vm/addrspace.c
 
 defoption paging
 
+optfile paging vm/swapfile.c
+optfile paging vm/pt.c
+optfile paging vm/vm_tlb.c
+optfile paging syscall/file_syscalls.c
+optfile paging syscall/proc_syscalls.c
+
 #add files that we will create here
 
 #

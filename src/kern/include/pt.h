@@ -1,5 +1,6 @@
 #ifndef __PT__
 #define __PT__
+#include <types.h>
 
 typedef struct pT *page_table;
 
