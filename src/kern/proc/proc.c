@@ -353,13 +353,12 @@ proc_remthread(struct thread *t)
 	int spl;
 
 	proc = t->t_proc;
-	KASSERT(proc != NULL);
-
-	spinlock_acquire(&proc->p_lock);
-	KASSERT(proc->p_numthreads > 0);
-	proc->p_numthreads--;
-	spinlock_release(&proc->p_lock);
-
+	if(proc != NULL){
+		spinlock_acquire(&proc->p_lock);
+		KASSERT(proc->p_numthreads > 0);
+		proc->p_numthreads--;
+		spinlock_release(&proc->p_lock);
+	}
 	spl = splhigh();
 	t->t_proc = NULL;
 	splx(spl);

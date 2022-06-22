@@ -7,6 +7,8 @@
                 "${env:HOME}/os161/src/kern/lib",
                 "${env:HOME}/os161/src/kern/compile/DUMBVM",
                 "${env:HOME}/os161/src/kern/compile/DUMBVM/includelinks",
+                "${env:HOME}/os161/src/kern/compile/PAGING",
+                "${env:HOME}/os161/src/kern/compile/PAGING/includelinks",
                 "${env:HOME}/os161/src/kern/dev/generic",
                 "${env:HOME}/os161/src/kern/dev/lamebus",
                 "${env:HOME}/os161/src/kern/dev",
