@@ -161,6 +161,10 @@ proc_create(const char *name)
 	/* VFS fields */
 	proc->p_cwd = NULL;
 
+#if OPT_PAGING
+	proc->start_pt_i = -1;
+#endif
+
 	proc_init_waitpid(proc,name);
 
 	return proc;

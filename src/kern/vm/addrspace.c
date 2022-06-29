@@ -33,6 +33,10 @@
 #include <addrspace.h>
 #include <vm.h>
 #include <proc.h>
+#include <opt-paging.h>
+#if OPT_PAGING
+#include <vm_tlb.h>
+#endif
 
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
@@ -53,7 +57,13 @@ as_create(void)
 	/*
 	 * Initialize as needed.
 	 */
-
+#if OPT_PAGING
+	as->as_vbase1 = 0;
+	as->as_npages1 = 0;
+	as->as_vbase2 = 0;
+	as->as_npages2 = 0;
+	as->as_stackpbase = 0;
+#endif
 	return as;
 }
 
@@ -104,6 +114,9 @@ as_activate(void)
 	/*
 	 * Write this.
 	 */
+#if OPT_PAGING
+	TLB_Invalidate_all();
+#endif
 }
 
 void

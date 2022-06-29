@@ -342,8 +342,6 @@ file      proc/proc.c
 
 file      vm/kmalloc.c
 
-optofffile dumbvm   vm/addrspace.c
-
 defoption paging
 
 optfile         paging       vm/swapfile.c
@@ -351,7 +349,7 @@ optfile         paging       vm/pt.c
 optfile         paging       vm/vm_tlb.c
 optfile         paging       syscall/file_syscalls.c
 optfile         paging       syscall/proc_syscalls.c
-optofffile      paging       vm/addrspace.c
+optfile         paging       vm/addrspace.c
 optofffile      paging       arch/mips/vm/dumbvm.c
 optfile         paging       arch/mips/vm/paging.c
 

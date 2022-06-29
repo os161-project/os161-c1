@@ -5,6 +5,7 @@
         "opt-noasserts.h": "c",
         "version.h": "c",
         "pt.h": "c",
-        "types.h": "c"
+        "types.h": "c",
+        "spl.h": "c"
     }
 }
