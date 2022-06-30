@@ -43,6 +43,7 @@
 #include <swapfile.h>
 #include <types.h>
 #include <mainbus.h>
+#include "vm_tlb.h"
 
 /*
  * Dumb MIPS-only "VM system" that is intended to only be just barely
@@ -168,9 +169,12 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 	switch (faulttype) {
 	    case VM_FAULT_READONLY:
-		/* We always create pages read-write, so we can't get this */
-		panic("dumbvm: got VM_FAULT_READONLY\n");
+			//try to access a read-only segment causes a fault, terminate the process
+			//TO-DO: terminate the process
+			break;
 	    case VM_FAULT_READ:
+			
+			break;
 	    case VM_FAULT_WRITE:
 		break;
 	    default:
@@ -197,17 +201,17 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 	/* Assert that the address space has been set up properly. */
 	KASSERT(as->as_vbase1 != 0);
-	KASSERT(as->as_pbase1 != 0);
+	//KASSERT(as->as_pbase1 != 0);
 	KASSERT(as->as_npages1 != 0);
 	KASSERT(as->as_vbase2 != 0);
-	KASSERT(as->as_pbase2 != 0);
+	//KASSERT(as->as_pbase2 != 0);
 	KASSERT(as->as_npages2 != 0);
-	KASSERT(as->as_stackpbase != 0);
+	//KASSERT(as->as_stackpbase != 0);
 	KASSERT((as->as_vbase1 & PAGE_FRAME) == as->as_vbase1);
-	KASSERT((as->as_pbase1 & PAGE_FRAME) == as->as_pbase1);
+	//KASSERT((as->as_pbase1 & PAGE_FRAME) == as->as_pbase1);
 	KASSERT((as->as_vbase2 & PAGE_FRAME) == as->as_vbase2);
-	KASSERT((as->as_pbase2 & PAGE_FRAME) == as->as_pbase2);
-	KASSERT((as->as_stackpbase & PAGE_FRAME) == as->as_stackpbase);
+	//KASSERT((as->as_pbase2 & PAGE_FRAME) == as->as_pbase2);
+	//KASSERT((as->as_stackpbase & PAGE_FRAME) == as->as_stackpbase);
 
 	vbase1 = as->as_vbase1;
 	vtop1 = vbase1 + as->as_npages1 * PAGE_SIZE;
@@ -230,25 +234,16 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	}
 
 	/* make sure it's page-aligned */
-	KASSERT((paddr & PAGE_FRAME) == paddr);
+	//KASSERT((paddr & PAGE_FRAME) == paddr);
 
 	/* Disable interrupts on this CPU while frobbing the TLB. */
 	spl = splhigh();
 
-	for (i=0; i<NUM_TLB; i++) {
-		tlb_read(&ehi, &elo, i);
-		if (elo & TLBLO_VALID) {
-			continue;
-		}
-		ehi = faultaddress;
-		elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
-		DEBUG(DB_VM, "dumbvm: 0x%x -> 0x%x\n", faultaddress, paddr);
-		tlb_write(ehi, elo, i);
-		splx(spl);
-		return 0;
-	}
+	//TO-DO handle page fault here
+	paddr=paddr & PAGE_FRAME;
+	tlb_insert(faultaddress,paddr);
 
-	kprintf("dumbvm: Ran out of TLB entries - cannot handle page fault\n");
+	
 	splx(spl);
 	return EFAULT;
 }

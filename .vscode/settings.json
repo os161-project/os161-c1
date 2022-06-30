@@ -6,6 +6,8 @@
         "version.h": "c",
         "pt.h": "c",
         "types.h": "c",
-        "spl.h": "c"
+        "spl.h": "c",
+        "tlb.h": "c",
+        "proc.h": "c"
     }
 }
