@@ -70,6 +70,7 @@ struct addrspace {
 #endif
 };
 
+
 /*
  * Functions in addrspace.c:
  *
