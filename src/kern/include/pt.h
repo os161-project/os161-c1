@@ -17,5 +17,6 @@ void setInvalid(page_table pt, uint32_t index);
 //Use kfree function
 void pageTFree(page_table pt);
 
+uint32_t replace_page(page_table pt);
 
 #endif

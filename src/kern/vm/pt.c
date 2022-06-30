@@ -2,6 +2,8 @@
 #include <types.h>
 #include <current.h>
 #include <proc.h>
+#include <spl.h>
+#include <stdlib.h>
 
 // V = validity bit
 // C = chain bit (if next field has a value)
@@ -53,7 +55,7 @@ void addEntry(page_table pt, uint32_t page_n, uint32_t index, uint32_t pid){
 
 //Return the index where page number is stored in, if page is not stored in memory, return -1
 int getFrameN(page_table pt, uint32_t page_n){
-    KASSERT(GET_PID(pt->entries[curproc->start_pt_i].low) == curproc->p_pid);
+    //KASSERT(GET_PID(pt->entries[curproc->start_pt_i].low) == curproc->p_pid);
     for(int i = curproc->start_pt_i; i != -1 && HAS_CHAIN(pt->entries[i].hi); i = GET_NEXT(pt->entries[i].low)){
         if(GET_PN(pt->entries[i].hi) == page_n){
             return i;
@@ -72,4 +74,11 @@ void pageTFree(page_table pt){
     kfree(pt->entries);
     kfree(pt);
     return;
+}
+
+uint32_t replace_page(page_table pt){
+    int spl = splhigh();
+    uint32_t page_index = random() % pt->size;
+    splx(spl);
+    return page_index;
 }
