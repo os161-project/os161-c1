@@ -36,9 +36,11 @@
 
 
 #include <spinlock.h>
+/*
 #ifndef OPT_SEM_LOCK
 #include "opt-sem_lock.h"
 #endif
+*/
 #ifndef OPT_WCHAN_LOCK
 #include "opt-wchan_lock.h"
 #endif

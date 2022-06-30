@@ -11,26 +11,29 @@
 
 uint32_t sys_write(int fd, const void* buf, size_t size) {
     if(fd == STDOUT_FILENO || fd == STDERR_FILENO) {
-        for(uint32_t i = 0; i < size; i++) {
+        uint32_t i;
+        for(i = 0; i < size; i++) {
             putch(((char*)buf)[i]);
         }
+        return size;
     } else {
         kprintf("Explicit management of files is not yet implemented.");
-        return 1; 
+        return -1; 
     }
-    return 0;
 }
 
 uint32_t sys_read(int fd, void* buf, size_t size) {
     if(fd == STDIN_FILENO) {
-        uint32_t i;
+        uint32_t i; int c;
         for(i = 0; i < size; i++) {
-            ((char*)buf)[i] = getch();
+            c = getch();
+            if(c < 0) return i; 
+            ((char*)buf)[i] = c;
         }
         ((char*)buf)[i] = '\0';
+        return size;
     } else {
         kprintf("Explicit management of files is not yet implemented.");
-        return 1;
+        return -1;
     }
-    return 0;
 }

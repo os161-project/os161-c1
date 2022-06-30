@@ -22,6 +22,12 @@
         "spl.h": "c",
         "thread.h": "c",
         "functional": "cpp",
-        "type_traits": "cpp"
+        "type_traits": "cpp",
+        "proc.h": "c",
+        "limits.h": "c",
+        "synch.h": "c",
+        "addrspace.h": "c",
+        "vnode.h": "c",
+        "opt-dumbvm.h": "c"
     }
 }

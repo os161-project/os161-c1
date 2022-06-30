@@ -34,6 +34,7 @@
 #include <mips/trapframe.h>
 #include <thread.h>
 #include <current.h>
+#include <addrspace.h>
 #include <syscall.h>
 
 
@@ -80,7 +81,8 @@ syscall(struct trapframe *tf)
 {
 	int callno;
 	int32_t retval;
-	int err;
+	/* Initializing err to 0, in order to avoid errors for syscalls with no return type */
+	int err = 0;
 
 	KASSERT(curthread != NULL);
 	KASSERT(curthread->t_curspl == 0);
@@ -111,16 +113,43 @@ syscall(struct trapframe *tf)
 
 	    /* Add stuff here */
 		case SYS_read:
-		err = sys_read((int)tf->tf_a0, (void*) tf->tf_a1, (size_t) tf->tf_a2);
+		retval = sys_read((int)tf->tf_a0, (void*) tf->tf_a1, (size_t) tf->tf_a2);
+		if(retval < 0) {
+			err = ENOSYS;
+		} else err = 0;
 		break;
 
 		case SYS_write:
-		err = sys_write((int)tf->tf_a0, (void*) tf->tf_a1, (size_t) tf->tf_a2);
+		retval = sys_write((int)tf->tf_a0, (void*) tf->tf_a1, (size_t) tf->tf_a2);
+		if(retval < 0) {
+			err = ENOSYS;
+		} else err = 0;
 		break;
 
 		case SYS__exit:
-		err = sys__exit((int)tf->tf_a0);
+		sys__exit((int)tf->tf_a0);
 		break; 
+
+		case SYS_waitpid:
+		retval = sys_waitpid((pid_t) tf->tf_a0, (userptr_t) tf->tf_a1, (int) tf->tf_a2);
+		if(retval < 0) {
+			err = ENOSYS;
+		} else err = 0;
+		break;
+
+		case SYS_getpid:
+		retval = sys_getpid();
+		if(retval < 0) {
+			err = ENOSYS;
+		} else err = 0;
+		break;
+
+		case SYS_fork:
+		retval = sys_fork(tf, (pid_t*) &retval);
+		if(retval < 0) {
+			err = ENOSYS;
+		} else err = 0;
+		break;
 
 	    default:
 		kprintf("Unknown syscall %d\n", callno);
@@ -168,5 +197,15 @@ syscall(struct trapframe *tf)
 void
 enter_forked_process(struct trapframe *tf)
 {
-	(void)tf;
+	// Duplicate frame so it's put on stack
+	struct trapframe forkedTf = *tf;
+	forkedTf.tf_v0 = 0; // return value is 0
+	forkedTf.tf_a3 = 0; // return with success (no error)
+
+	forkedTf.tf_epc += 4; // return to next instruction
+
+	// Activating the address space
+	as_activate();
+
+	mips_usermode(&forkedTf);
 }

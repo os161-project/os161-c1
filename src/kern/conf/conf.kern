@@ -483,3 +483,9 @@ defoption cv
 # like in dumbvm option, not include vm/addrspace.c to make dumbvm work
 #
 optofffile cv vm/addrspace.c
+
+defoption waitpid
+#
+# like in dumbvm option, not include vm/addrspace.c to make dumbvm work
+#
+optofffile waitpid vm/addrspace.c

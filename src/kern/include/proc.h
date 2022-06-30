@@ -37,6 +37,7 @@
  */
 
 #include <spinlock.h>
+#include <synch.h>
 
 struct addrspace;
 struct thread;
@@ -71,6 +72,9 @@ struct proc {
 	struct vnode *p_cwd;		/* current working directory */
 
 	/* add more material here as needed */
+	int p_exitcode;
+	struct semaphore *wp_sem;
+	pid_t p_pid;
 };
 
 /* This is the process structure for the kernel and for kernel-only threads. */
@@ -81,6 +85,15 @@ void proc_bootstrap(void);
 
 /* Create a fresh process for use by runprogram(). */
 struct proc *proc_create_runprogram(const char *name);
+
+/* Wait for a process. */
+int proc_wait(struct proc *p);
+
+/* Get the pid of the current process (pointed by curproc) */
+pid_t proc_getpid(struct proc *p);
+
+/* Get the struc proc data structure of a process, given its pid */
+struct proc* proc_getproc(pid_t pid);
 
 /* Destroy a process. */
 void proc_destroy(struct proc *proc);

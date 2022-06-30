@@ -783,10 +783,19 @@ thread_exit(void)
 	cur = curthread;
 
 	/*
-	 * Detach from our process. You might need to move this action
-	 * around, depending on how your wait/exit works.
+	 * Let's see if the thread is already detached.
+	 * This check is needed and it also must not stop the execution of the thread_exit,
+	 * because the thread_exit function is not called only by the sys__exit syscall implementation.
 	 */
-	proc_remthread(cur);
+
+	if(cur->t_proc != NULL) {
+		/* It means that the thread is not already detached */
+		/*
+		* Detach from our process. You might need to move this action
+		* around, depending on how your wait/exit works.
+		*/
+		proc_remthread(cur);
+	}
 
 	/* Make sure we *are* detached (move this only if you're sure!) */
 	KASSERT(cur->t_proc == NULL);

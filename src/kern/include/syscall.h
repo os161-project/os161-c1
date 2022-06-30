@@ -60,6 +60,8 @@ int sys_reboot(int code);
 int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
 uint32_t sys_write(int fd, const void* buf, size_t size);
 uint32_t sys_read(int fd, void* buf, size_t size);
-int sys__exit(int status);
-
+void sys__exit(int status);
+int sys_waitpid(pid_t pid, userptr_t statusp, int options);
+pid_t sys_getpid(void); // syscall interface to getpid, proc_getpid can be used inside the kernel
+int sys_fork(struct trapframe *ctf, pid_t *retval);
 #endif /* _SYSCALL_H_ */

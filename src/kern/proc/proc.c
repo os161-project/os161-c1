@@ -48,6 +48,10 @@
 #include <current.h>
 #include <addrspace.h>
 #include <vnode.h>
+#include <limits.h>
+#include <synch.h>
+
+#define MAX_PID 100
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -55,20 +59,85 @@
 struct proc *kproc;
 
 /*
+ *  Kernel table for supporting process indentification throught pid.
+ */
+
+static struct _processTable
+{
+	int active;
+	struct proc *p_table[MAX_PID + 1];
+	int cur_pid;
+	struct spinlock lk;
+} processTable;
+
+/*
+ *	Initialize support for pid/waitpid.
+ */
+
+static void
+proc_init_waitpid(struct proc *proc, const char *name)
+{
+	/* looking for a free index in table, using a circular strategy */
+	int i;
+	spinlock_acquire(&processTable.lk);
+	i = processTable.cur_pid + 1;
+	proc->p_pid = 0;
+	if (i > MAX_PID)
+		i = 1;
+	while (i != processTable.cur_pid)
+	{
+		if (processTable.p_table[i] == NULL)
+		{
+			processTable.p_table[i] = proc;
+			processTable.cur_pid = i;
+			proc->p_pid = i;
+			break;
+		}
+		i++;
+		if (i > MAX_PID)
+			i = 1;
+	}
+	spinlock_release(&processTable.lk);
+	if (proc->p_pid == 0)
+	{
+		panic("too many processes. proc table is full\n");
+	}
+	proc->p_exitcode = 0;
+	proc->wp_sem = sem_create(name, 0);
+}
+
+/*
+ * Terminate support for pid/waitpid.
+ */
+
+static void
+proc_end_waitpid(struct proc *proc)
+{
+	int i = 0;
+	spinlock_acquire(&processTable.lk);
+	i = proc->p_pid;
+	KASSERT(i > 0 && i <= MAX_PID);
+	processTable.p_table[i] = NULL;
+	spinlock_release(&processTable.lk);
+	sem_destroy(proc->wp_sem);
+}
+
+/*
  * Create a proc structure.
  */
-static
-struct proc *
+static struct proc *
 proc_create(const char *name)
 {
 	struct proc *proc;
 
 	proc = kmalloc(sizeof(*proc));
-	if (proc == NULL) {
+	if (proc == NULL)
+	{
 		return NULL;
 	}
 	proc->p_name = kstrdup(name);
-	if (proc->p_name == NULL) {
+	if (proc->p_name == NULL)
+	{
 		kfree(proc);
 		return NULL;
 	}
@@ -82,6 +151,9 @@ proc_create(const char *name)
 	/* VFS fields */
 	proc->p_cwd = NULL;
 
+	/* Support for the waitpid syscall */
+	proc_init_waitpid(proc, name);
+
 	return proc;
 }
 
@@ -91,8 +163,7 @@ proc_create(const char *name)
  * Note: nothing currently calls this. Your wait/exit code will
  * probably want to do so.
  */
-void
-proc_destroy(struct proc *proc)
+void proc_destroy(struct proc *proc)
 {
 	/*
 	 * You probably want to destroy and null out much of the
@@ -112,13 +183,15 @@ proc_destroy(struct proc *proc)
 	 */
 
 	/* VFS fields */
-	if (proc->p_cwd) {
+	if (proc->p_cwd)
+	{
 		VOP_DECREF(proc->p_cwd);
 		proc->p_cwd = NULL;
 	}
 
 	/* VM fields */
-	if (proc->p_addrspace) {
+	if (proc->p_addrspace)
+	{
 		/*
 		 * If p is the current process, remove it safely from
 		 * p_addrspace before destroying it. This makes sure
@@ -154,11 +227,13 @@ proc_destroy(struct proc *proc)
 		 */
 		struct addrspace *as;
 
-		if (proc == curproc) {
+		if (proc == curproc)
+		{
 			as = proc_setas(NULL);
 			as_deactivate();
 		}
-		else {
+		else
+		{
 			as = proc->p_addrspace;
 			proc->p_addrspace = NULL;
 		}
@@ -168,20 +243,70 @@ proc_destroy(struct proc *proc)
 	KASSERT(proc->p_numthreads == 0);
 	spinlock_cleanup(&proc->p_lock);
 
+	/* Clearing support for waitpid */
+	proc_end_waitpid(proc);
+
 	kfree(proc->p_name);
 	kfree(proc);
 }
 
 /*
+ *  Wait for process termination, then get exit status and destroy userprocess.
+ */
+
+int proc_wait(struct proc *p)
+{
+	int exitcode;
+	/* proc should be valid and not equal to kernel process */
+	KASSERT(p != NULL); 
+	KASSERT(p != kproc); 
+	/* The implementation depends on the chosen synchronization primitive */
+	P(p->wp_sem);
+	exitcode = p->p_exitcode;
+	proc_destroy(p);
+	return exitcode;
+}
+
+/*
+ *  Get pid of the current process (which is the one pointed by curproc).
+ */
+pid_t proc_getpid(struct proc *p)
+{
+	KASSERT(p != NULL);
+	return p->p_pid;
+}
+
+/*
+ * Get the proc data structure of the process with the given pid.
+ */
+
+struct proc *
+proc_getproc(pid_t pid)
+{
+	struct proc *p;
+	KASSERT(processTable.p_table[pid] != NULL);
+	KASSERT(pid <= MAX_PID);
+	//KASSERT(pid >= PID_MIN); /* Not complaint with prof solution, where PID for a User process can start from 1 */
+	KASSERT(pid >= 1);
+	p = processTable.p_table[pid];
+	KASSERT(p != NULL);
+	KASSERT(p->p_pid == pid);
+	return p;
+}
+
+/*
  * Create the process structure for the kernel.
  */
-void
-proc_bootstrap(void)
+void proc_bootstrap(void)
 {
 	kproc = proc_create("[kernel]");
-	if (kproc == NULL) {
+	if (kproc == NULL)
+	{
 		panic("proc_create for kproc failed\n");
 	}
+
+	spinlock_init(&processTable.lk);
+	processTable.active = 1;
 }
 
 /*
@@ -196,7 +321,8 @@ proc_create_runprogram(const char *name)
 	struct proc *newproc;
 
 	newproc = proc_create(name);
-	if (newproc == NULL) {
+	if (newproc == NULL)
+	{
 		return NULL;
 	}
 
@@ -212,7 +338,8 @@ proc_create_runprogram(const char *name)
 	 * the only reference to it.)
 	 */
 	spinlock_acquire(&curproc->p_lock);
-	if (curproc->p_cwd != NULL) {
+	if (curproc->p_cwd != NULL)
+	{
 		VOP_INCREF(curproc->p_cwd);
 		newproc->p_cwd = curproc->p_cwd;
 	}
@@ -230,8 +357,7 @@ proc_create_runprogram(const char *name)
  * the timer interrupt context switch, and any other implicit uses
  * of "curproc".
  */
-int
-proc_addthread(struct proc *proc, struct thread *t)
+int proc_addthread(struct proc *proc, struct thread *t)
 {
 	int spl;
 
@@ -257,8 +383,7 @@ proc_addthread(struct proc *proc, struct thread *t)
  * the timer interrupt context switch, and any other implicit uses
  * of "curproc".
  */
-void
-proc_remthread(struct thread *t)
+void proc_remthread(struct thread *t)
 {
 	struct proc *proc;
 	int spl;
@@ -290,7 +415,8 @@ proc_getas(void)
 	struct addrspace *as;
 	struct proc *proc = curproc;
 
-	if (proc == NULL) {
+	if (proc == NULL)
+	{
 		return NULL;
 	}
 
