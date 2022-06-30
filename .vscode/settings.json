@@ -4,5 +4,6 @@
         "lib.h": "c",
         "opt-noasserts.h": "c",
         "version.h": "c"
-    }
+    },
+    "C_Cpp.errorSquiggles": "Disabled"
 }

@@ -98,6 +98,7 @@ syscall(struct trapframe *tf)
 	 */
 
 	retval = 0;
+	err=0;
 
 	switch (callno) {
 	    case SYS_reboot:
@@ -106,10 +107,45 @@ syscall(struct trapframe *tf)
 
 	    case SYS___time:
 		err = sys___time((userptr_t)tf->tf_a0,
-				 (userptr_t)tf->tf_a1);
+			 (userptr_t)tf->tf_a1);
 		break;
 
-	    /* Add stuff here */
+		case SYS_read:
+		retval=sys_read((int)tf->tf_a0,(char*)tf->tf_a1,(size_t)tf->tf_a2);
+		if(retval<0){
+			err=-1;
+		}
+		break;
+		case SYS_write:
+		retval=sys_write((int)tf->tf_a0,(char*)tf->tf_a1,(size_t)tf->tf_a2);
+		if(retval<0){
+			err=-1;
+		}
+		break;
+
+		case SYS__exit:
+		//TO-DO: status handling
+		sys_exit(0);
+		err=0;
+		break;
+
+		case SYS_waitpid:
+		retval= sys_waitpid((pid_t)tf->tf_a0,(userptr_t)tf->tf_a1,(int)tf->tf_a2);
+		if(retval<0) err=ENOSYS;
+		else err=0;
+		break;
+		
+		case SYS_getpid:
+		retval=sys_getpid();
+		if(retval<0) err=ENOSYS;
+		else err=0;
+		break;
+
+		case SYS_open:
+		retval=sys_open((userptr_t)tf->tf_a0,
+				  (int)tf->tf_a1,
+				  (mode_t)tf->tf_a2, &err);
+		break;
 
 	    default:
 		kprintf("Unknown syscall %d\n", callno);

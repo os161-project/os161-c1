@@ -48,11 +48,83 @@
 #include <current.h>
 #include <addrspace.h>
 #include <vnode.h>
+#include <limits.h>
+#include <synch.h>
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
  */
 struct proc *kproc;
+
+
+/*
+ * Used to retrieve the pointer to the process starting from the pid
+ */
+#define MAX_PROC 100
+
+static struct _process_table{
+	int active;
+	struct proc *proc[MAX_PROC+1];
+	int last_i; //index of last allocated pid
+	struct spinlock lk;
+}process_table;
+
+
+struct proc *
+proc_search_pid(pid_t pid){
+	KASSERT(pid>0 && pid<MAX_PROC);
+	
+	struct proc *p=process_table.proc[pid];
+	KASSERT(p->p_pid==pid);
+	
+	return p;
+}
+
+static void
+proc_init_waitpid(struct proc *proc, const char *name){
+	//search a free index in the table
+	int i;
+	spinlock_acquire(&process_table.lk);
+	proc->p_pid=0;
+	i=process_table.last_i+1;
+	if(i>MAX_PROC){
+		i=1;
+		//if the process table is full, search from the beginning
+	}
+	//search for a free entry
+	while(i!=process_table.last_i){
+		if(process_table.proc[i]==NULL){
+			//FOUND!
+			process_table.proc[i]=curproc;
+			process_table.last_i=i;
+			proc->p_pid=i;
+			break;
+		}
+		i++;
+		if(i>MAX_PROC) i=1;
+
+	}
+	spinlock_release(&process_table.lk);
+	if(proc->p_pid==0){
+		panic("too many processes. proc table is full\n");
+	}
+
+	proc->sem=sem_create(name,0);
+}
+
+static void 
+end_wait_pid(struct proc *proc){
+	int i;
+	spinlock_acquire(&process_table.lk);
+
+	i=proc->p_pid;
+	KASSERT(i>0 && i<MAX_PROC);
+	process_table.proc[i]=NULL;
+
+	sem_destroy(proc->sem);
+
+	spinlock_release(&process_table.lk);
+}
 
 /*
  * Create a proc structure.
@@ -81,6 +153,18 @@ proc_create(const char *name)
 
 	/* VFS fields */
 	proc->p_cwd = NULL;
+
+	//ADDED BY GC
+	//create the semaphore
+	proc->sem=sem_create(name,0);
+	if(proc->sem==NULL){
+		kfree(proc);
+		return NULL;
+	}
+
+	proc_init_waitpid(proc,name);
+	
+
 
 	return proc;
 }
@@ -168,6 +252,8 @@ proc_destroy(struct proc *proc)
 	KASSERT(proc->p_numthreads == 0);
 	spinlock_cleanup(&proc->p_lock);
 
+	end_wait_pid(proc);
+
 	kfree(proc->p_name);
 	kfree(proc);
 }
@@ -182,6 +268,9 @@ proc_bootstrap(void)
 	if (kproc == NULL) {
 		panic("proc_create for kproc failed\n");
 	}
+	//activate the process table
+	spinlock_init(&process_table.lk);
+	process_table.active=1;
 }
 
 /*
@@ -317,4 +406,18 @@ proc_setas(struct addrspace *newas)
 	proc->p_addrspace = newas;
 	spinlock_release(&proc->p_lock);
 	return oldas;
+}
+
+int proc_wait(struct proc *p){
+	/* NULL and kernel proc forbidden */
+	KASSERT(p != NULL);
+	KASSERT(p != kproc);
+	//wait the end of the proc (sys_exit)
+	P(p->sem);
+	//get exit stauts
+	int exit_status=p->exit_status;
+
+	proc_destroy(p);
+
+	return exit_status;
 }

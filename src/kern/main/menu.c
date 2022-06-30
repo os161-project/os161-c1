@@ -137,6 +137,9 @@ common_prog(int nargs, char **args)
 	 * The new process will be destroyed when the program exits...
 	 * once you write the code for handling that.
 	 */
+	//added by GC
+	int exit_code=proc_wait(proc);
+	kprintf("exit status: %d\n",exit_code);
 
 	return 0;
 }
