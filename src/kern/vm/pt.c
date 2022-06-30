@@ -1,7 +1,9 @@
 #include "pt.h"
+#include "swapfile.h"
 #include <types.h>
 #include <current.h>
 #include <proc.h>
+#include <vm.h>
 #include <spl.h>
 #include <stdlib.h>
 
@@ -64,6 +66,18 @@ int getFrameN(page_table pt, uint32_t page_n){
     return -1;
 }
 
+// Return the page number for a given page table entry (corresponding to the given index)
+uint32_t getPageN(page_table pt, uint32_t index) {
+    KASSERT(pt->entries != NULL);
+    return GET_PN(pt->entries[index].hi);
+}
+
+// Return the PID stored in a page table entry, corresponding to the given index
+uint32_t getPID(page_table pt, uint32_t index) {
+    KASSERT(pt->entries != NULL);
+    return GET_PID(pt->entries[index].low);
+}
+
 void setInvalid(page_table pt, uint32_t index){
     pt->entries[index].hi = SET_VALID(pt->entries[index].hi, 0);
     return;
@@ -81,4 +95,25 @@ uint32_t replace_page(page_table pt){
     uint32_t page_index = random() % pt->size;
     splx(spl);
     return page_index;
+}
+
+
+void pageIn(page_table pt, uint32_t pid, paddr_t paddr) {
+    int spl;
+    uint32_t index = paddr / PAGE_FRAME;
+    // Code or Data?
+    vaddr_t vaddr = paddr + MIPS_KUSEG;
+    // TODO: Check if the virtual address is from the code or data segment
+    // TODO: Before swapping-in a new frame from the swap-file, we may need to make
+    // room for a new one, if the page table is already full.
+    // In this case, we need a page replacement algorithm, for selecting a victim to evict.
+    // The evicted page will be swapped-out from the IPT and loaded into the Swapfile
+    // Swap-in the frame from the swapfile, loading it into kernel buffer (?)
+    // TODO: Load the frame directly to the address space of the process
+    swapin(swap_table, index, paddr);
+    spl = splhigh();
+    // TODO: Set vpage number 
+    pt->entries[index].low = SET_PID(pt->entries[index], pid);
+    pt->entries[index].hi = SET_VALID(pt->entries, 1) | SET_CHAIN(pt->entries, 0);
+    splx(spl);
 }
