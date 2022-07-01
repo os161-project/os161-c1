@@ -40,6 +40,7 @@
 #include <vm.h>
 #include <opt-paging.h>
 #include <pt.h>
+#include <swapfile.h>
 #include <types.h>
 #include <mainbus.h>
 #include "vm_tlb.h"
@@ -70,11 +71,16 @@
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 
 page_table IPT;
+swap_table ST;
 
 void
 vm_bootstrap(void)
 {
 	vm_enabled = 0;
+	// Swap area init
+	char swap_file_name[] = "lhd0raw:";
+	ST = swapTableInit(swap_file_name);
+	// IPT init
 	size_t ram_size = mainbus_ramsize();
 	spinlock_acquire(&stealmem_lock);
 	paddr_t ram_user_base = ram_stealmem(0);

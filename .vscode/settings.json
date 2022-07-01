@@ -8,6 +8,7 @@
         "types.h": "c",
         "spl.h": "c",
         "tlb.h": "c",
-        "proc.h": "c"
+        "proc.h": "c",
+        "addrspace.h": "c"
     }
 }

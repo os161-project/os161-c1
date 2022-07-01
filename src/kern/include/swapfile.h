@@ -2,16 +2,17 @@
 #define __SWAPFILE__
 
 #include <types.h>
+#include <pt.h>
 
-// S = Swapped bit
-//<----------------20------------>|<----6-----><-----6--->|
-//_________________________________________________________
-//|       Virtual Page Number     |         |S|     PID   |  
-//|_______________________________|_______________________|
+typedef struct swapTable *swap_table;
 
-struct swapTable{
-    uint32_t *entry;
-    int size;
-};
+swap_table swapTableInit(char swap_file_name[]);
+
+void swapout(swap_table st, uint32_t index, paddr_t paddr, page_table pt);
+
+void swapin(swap_table st, uint32_t index, paddr_t paddr);
+
+int getFirstFreeChunckIndex(swap_table st);
+
 
 #endif
