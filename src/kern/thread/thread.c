@@ -662,7 +662,7 @@ thread_switch(threadstate_t newstate, struct wchan *wc, struct spinlock *lk)
 
 	//ADDED for project
 #if OPT_PAGING
-	if(cur->pid != next->pid){
+	if(cur->t_proc->p_pid != next->t_proc->p_pid){
 		TLB_Invalidate_all();
 	}
 #endif

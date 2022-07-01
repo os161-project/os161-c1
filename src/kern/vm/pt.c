@@ -5,7 +5,6 @@
 #include <proc.h>
 #include <vm.h>
 #include <spl.h>
-#include <stdlib.h>
 
 // V = validity bit
 // C = chain bit (if next field has a value)
@@ -98,7 +97,7 @@ uint32_t replace_page(page_table pt){
 }
 
 
-void pageIn(page_table pt, uint32_t pid, paddr_t paddr) {
+void pageIn(page_table pt, uint32_t pid, paddr_t paddr, swap_table st) {
     int spl;
     uint32_t index = paddr / PAGE_FRAME;
     // Code or Data?
@@ -110,7 +109,7 @@ void pageIn(page_table pt, uint32_t pid, paddr_t paddr) {
     // The evicted page will be swapped-out from the IPT and loaded into the Swapfile
     // Swap-in the frame from the swapfile, loading it into kernel buffer (?)
     // TODO: Load the frame directly to the address space of the process
-    swapin(swap_table, index, paddr);
+    swapin(st, index, paddr);
     spl = splhigh();
     // TODO: Set vpage number 
     pt->entries[index].low = SET_PID(pt->entries[index], pid);
