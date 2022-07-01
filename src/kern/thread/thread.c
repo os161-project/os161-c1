@@ -50,7 +50,7 @@
 #include <addrspace.h>
 #include <mainbus.h>
 #include <vnode.h>
-
+#include "vm_tlb.h"
 
 /* Magic number used as a guard value on kernel thread stacks. */
 #define THREAD_STACK_MAGIC 0xbaadf00d
@@ -659,6 +659,14 @@ thread_switch(threadstate_t newstate, struct wchan *wc, struct spinlock *lk)
 	 */
 	curcpu->c_curthread = next;
 	curthread = next;
+
+	//ADDED for project
+#if OPT_PAGING
+	if(cur->pid != next->pid){
+		TLB_Invalidate_all();
+	}
+#endif
+
 
 	/* do the switch (in assembler in switch.S) */
 	switchframe_switch(&cur->t_context, &next->t_context);
