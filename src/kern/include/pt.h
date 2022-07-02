@@ -4,6 +4,8 @@
 
 typedef struct pT *page_table;
 
+#include "swapfile.h"
+
 page_table pageTInit(uint32_t n_pages);
 
 // Add a new entry into page table, set V, set next and chain bit to zero.

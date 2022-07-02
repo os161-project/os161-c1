@@ -1,5 +1,4 @@
 #include "pt.h"
-#include "swapfile.h"
 #include <types.h>
 #include <current.h>
 #include <proc.h>
@@ -112,7 +111,8 @@ void pageIn(page_table pt, uint32_t pid, paddr_t paddr, swap_table st) {
     swapin(st, index, paddr);
     spl = splhigh();
     // TODO: Set vpage number 
-    pt->entries[index].low = SET_PID(pt->entries[index], pid);
-    pt->entries[index].hi = SET_VALID(pt->entries, 1) | SET_CHAIN(pt->entries, 0);
+    pt->entries[index].low = SET_PID(pt->entries[index].low, pid);
+    pt->entries[index].hi = SET_VALID(pt->entries[index].hi, 1) | SET_CHAIN(pt->entries[index].hi, 0);
+    (void)vaddr;
     splx(spl);
 }

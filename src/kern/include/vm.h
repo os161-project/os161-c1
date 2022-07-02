@@ -39,6 +39,9 @@
 
 #include <machine/vm.h>
 #include <opt-paging.h>
+#if OPT_PAGING
+#include "swapfile.h"
+#endif
 
 /* Fault-type arguments to vm_fault() */
 #define VM_FAULT_READ        0    /* A read was attempted */
@@ -61,6 +64,9 @@ void vm_tlbshootdown(const struct tlbshootdown *);
 
 #if OPT_PAGING
 int vm_enabled;
+swap_table ST;
+
+uint32_t handle_page_fault(vaddr_t faultaddress);
 #endif
 
 

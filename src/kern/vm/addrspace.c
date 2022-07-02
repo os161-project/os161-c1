@@ -146,13 +146,33 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	/*
 	 * Write this.
 	 */
+	size_t npages; 
 
-	(void)as;
-	(void)vaddr;
-	(void)memsize;
+	/* Align the region. First, the base... */
+	memsize += vaddr & ~(vaddr_t)PAGE_FRAME;
+	vaddr &= PAGE_FRAME;
+
+	/* ...and now the length. */
+	memsize = (memsize + PAGE_SIZE - 1) & PAGE_FRAME;
+
+	npages = memsize / PAGE_SIZE;
+
 	(void)readable;
 	(void)writeable;
 	(void)executable;
+
+	if (as->as_vbase1 == 0) {
+		as->as_vbase1 = vaddr;
+		as->as_npages1 = npages;
+		return 0;
+	}
+
+	if (as->as_vbase2 == 0) {
+		as->as_vbase2 = vaddr;
+		as->as_npages2 = npages;
+		return 0;
+	}
+
 	return ENOSYS;
 }
 

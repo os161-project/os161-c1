@@ -40,7 +40,6 @@
 #include <vm.h>
 #include <opt-paging.h>
 #include <pt.h>
-#include <swapfile.h>
 #include <types.h>
 #include <mainbus.h>
 #include "vm_tlb.h"
@@ -71,8 +70,6 @@
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 
 page_table IPT;
-swap_table ST;
-int vm_enabled;
 
 void
 vm_bootstrap(void)
@@ -158,7 +155,7 @@ int
 vm_fault(int faulttype, vaddr_t faultaddress)
 {
 	vaddr_t vbase1, vtop1, vbase2, vtop2, stackbase, stacktop;
-	paddr_t paddr;
+	int paddr;
 	//uint32_t ehi, elo;
 	struct addrspace *as;
 	int spl;
@@ -219,7 +216,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	vtop2 = vbase2 + as->as_npages2 * PAGE_SIZE;
 	stackbase = USERSTACK - DUMBVM_STACKPAGES * PAGE_SIZE;
 	stacktop = USERSTACK;
-/*
+
 	if (faultaddress >= vbase1 && faultaddress < vtop1) {
 		paddr = (faultaddress - vbase1) + as->as_pbase1;
 	}
@@ -231,7 +228,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	}
 	else {
 		return EFAULT;
-	}*/
+	}
 
 	/* make sure it's page-aligned */
 	//KASSERT((paddr & PAGE_FRAME) == paddr);
@@ -242,14 +239,14 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	if(faultaddress <=MIPS_KSEG0){
 
 		//retrieve the frame number in the page table
-		paddr=getFrameN(IPT,faultaddress & PAGE_FRAME);
+		paddr = getFrameN(IPT,(faultaddress & PAGE_FRAME) >> 12);
 		if(paddr==-1){
 			//PAGE FAULT
 			//TO_DO: handle page fault
-			paddr= handle_page_fault(faultaddress);
+			paddr = handle_page_fault(faultaddress);
 		}
 		//add to tlb
-		paddr=paddr & PAGE_FRAME;
+		paddr = paddr & PAGE_FRAME;
 		TLB_Insert(faultaddress,paddr);
 
 		
@@ -262,7 +259,8 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 uint32_t handle_page_fault(vaddr_t faultaddress){
 	uint32_t paddr_t;
-
 	//TO-DO: here we need to load a page from disk into memory
-
+	(void)faultaddress;
+	(void)paddr_t;
+	return 0;
 }

@@ -2,7 +2,7 @@
 #include <mips/tlb.h>
 #include <spl.h>
 #include <addrspace.h>
-
+#include <proc.h>
 
 int TLB_Insert(vaddr_t faultaddress, paddr_t paddr){
 	int i,spl;
@@ -25,7 +25,7 @@ int TLB_Insert(vaddr_t faultaddress, paddr_t paddr){
 			}else{
 				lo=paddr | TLBLO_DIRTY | TLBLO_VALID;
 			}
-			tlb_write(&hi,&lo,i);
+			tlb_write(hi,lo,i);
 			//enable interrupt
 			splx(spl);
 			return 0;
@@ -38,7 +38,7 @@ int TLB_Insert(vaddr_t faultaddress, paddr_t paddr){
 	//write in the tlb at index = victim
 	hi=faultaddress;
 	lo=paddr | TLBLO_DIRTY | TLBLO_VALID;
-	tlb_write(&hi,&lo,victim);
+	tlb_write(hi,lo,victim);
 
     splx(spl);
     return 0;

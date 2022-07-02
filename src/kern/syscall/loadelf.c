@@ -59,6 +59,11 @@
 #include <addrspace.h>
 #include <vnode.h>
 #include <elf.h>
+#include <opt-paging.h>
+#if OPT_PAGING
+#include <vm.h>
+#include <current.h>
+#endif
 
 /*
  * Load a segment at virtual address VADDR. The segment in memory
@@ -81,6 +86,13 @@ load_segment(struct addrspace *as, struct vnode *v,
 	     size_t memsize, size_t filesize,
 	     int is_executable)
 {
+#if OPT_PAGING
+	elf_to_swap(ST, v, offset, vaddr >> 12, memsize, curproc->p_pid);
+	(void)as;
+	(void)filesize;
+	(void)is_executable;
+	return 0;
+#else
 	struct iovec iov;
 	struct uio u;
 	int result;
@@ -141,8 +153,8 @@ load_segment(struct addrspace *as, struct vnode *v,
 		}
 	}
 #endif
-
 	return result;
+#endif
 }
 
 /*
