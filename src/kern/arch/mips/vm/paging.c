@@ -154,7 +154,7 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
 int
 vm_fault(int faulttype, vaddr_t faultaddress)
 {
-	vaddr_t vbase1, vtop1, vbase2, vtop2, stackbase, stacktop;
+	//vaddr_t vbase1, vtop1, vbase2, vtop2, stackbase, stacktop;
 	int paddr;
 	//uint32_t ehi, elo;
 	struct addrspace *as;
@@ -209,7 +209,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	KASSERT((as->as_vbase2 & PAGE_FRAME) == as->as_vbase2);
 	//KASSERT((as->as_pbase2 & PAGE_FRAME) == as->as_pbase2);
 	//KASSERT((as->as_stackpbase & PAGE_FRAME) == as->as_stackpbase);
-
+	/*
 	vbase1 = as->as_vbase1;
 	vtop1 = vbase1 + as->as_npages1 * PAGE_SIZE;
 	vbase2 = as->as_vbase2;
@@ -228,7 +228,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	}
 	else {
 		return EFAULT;
-	}
+	}*/
 
 	/* make sure it's page-aligned */
 	//KASSERT((paddr & PAGE_FRAME) == paddr);
@@ -260,7 +260,20 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 uint32_t handle_page_fault(vaddr_t faultaddress){
 	uint32_t paddr_t;
 	//TO-DO: here we need to load a page from disk into memory
-	(void)faultaddress;
 	(void)paddr_t;
+	uint32_t victim_frame;
+	int chunk_index = getSwapChunk(ST, faultaddress), free_chunk_index;
+	if(chunk_index == -1){
+		panic("Unavailable chunk in swap file!\nThis shouldn't happen...\n");
+	}
+	// We have to implement a search for free frames, now I'm assuming the IPT is full...
+	victim_frame = replace_page(IPT);
+	free_chunk_index = getFirstFreeChunckIndex(ST);
+	if(free_chunk_index == -1){
+		panic("Wait...is swap area full?!");
+	}
+	// As I said...I'm covering the replacement case, if we have a free frame it's not necessary
+	swapout(ST, free_chunk_index, victim_frame << 12, IPT);
+	swapin(ST, chunk_index, victim_frame << 12, IPT/*, faultaddress*/);
 	return 0;
 }

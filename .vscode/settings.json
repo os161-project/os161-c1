@@ -9,6 +9,13 @@
         "spl.h": "c",
         "tlb.h": "c",
         "proc.h": "c",
-        "addrspace.h": "c"
+        "addrspace.h": "c",
+        "opt-paging.h": "c",
+        "vm.h": "c",
+        "spinlock.h": "c",
+        "mainbus.h": "c",
+        "current.h": "c",
+        "cpu.h": "c",
+        "swapfile.h": "c"
     }
 }

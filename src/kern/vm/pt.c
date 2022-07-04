@@ -40,16 +40,16 @@ page_table pageTInit(uint32_t n_pages){
     tmp->entries = kmalloc(n_pages * sizeof(*(tmp->entries)));
     tmp->size = n_pages;
     for(i = 0; i < n_pages; i++){
-        tmp->entries[i].hi = SET_PN(tmp->entries[i].hi, 0) | SET_VALID(tmp->entries[i].hi, 0) | SET_CHAIN(tmp->entries[i].hi, 0);
-        tmp->entries[i].low = SET_NEXT(tmp->entries[i].low, 0) | SET_PID(tmp->entries[i].low, 0);
+        tmp->entries[i].hi = SET_PN(SET_VALID(SET_CHAIN(tmp->entries[i].hi, 0), 0), 0);
+        tmp->entries[i].low = SET_NEXT(SET_PID(tmp->entries[i].low, 0), 0);
     }
     return tmp;
 }
 
 //Add a new entry into page table, set V, set next and chain bit to zero.
 void addEntry(page_table pt, uint32_t page_n, uint32_t index, uint32_t pid){
-    pt->entries[index].hi = SET_PN(pt->entries[index].hi, page_n) | SET_CHAIN(pt->entries[index].hi, 0) | SET_VALID(pt->entries[index].hi, 1);
-    pt->entries[index].low = SET_PID(pt->entries[index].low, pid) | SET_NEXT(pt->entries[index].low, 0);
+    pt->entries[index].hi = SET_PN(SET_CHAIN(SET_VALID(pt->entries[index].hi, 1), 0), page_n);
+    pt->entries[index].low = SET_PID(SET_NEXT(pt->entries[index].low, 0), pid);
     return;
 }
 
@@ -108,11 +108,13 @@ void pageIn(page_table pt, uint32_t pid, paddr_t paddr, swap_table st) {
     // The evicted page will be swapped-out from the IPT and loaded into the Swapfile
     // Swap-in the frame from the swapfile, loading it into kernel buffer (?)
     // TODO: Load the frame directly to the address space of the process
-    swapin(st, index, paddr);
+    swapin(st, index, paddr, pt/*, 0*/);
     spl = splhigh();
     // TODO: Set vpage number 
-    pt->entries[index].low = SET_PID(pt->entries[index].low, pid);
-    pt->entries[index].hi = SET_VALID(pt->entries[index].hi, 1) | SET_CHAIN(pt->entries[index].hi, 0);
+    // Maybe we can call addEntry function and modify it
+    /*pt->entries[index].low = SET_PID(pt->entries[index].low, pid);
+    pt->entries[index].hi = SET_VALID(SET_CHAIN(pt->entries[index].hi, 0), 1);*/
     (void)vaddr;
+    (void)pid;
     splx(spl);
 }
