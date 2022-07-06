@@ -23,11 +23,15 @@ uint32_t getPID(page_table pt, uint32_t index);
 void setInvalid(page_table pt, uint32_t index);
 
 // Load new Page in the process address space, doing a swap-in from swapfile
-void pageIn (page_table pt, uint32_t pid, paddr_t paddr, swap_table st);
+paddr_t pageIn (page_table pt, uint32_t pid, vaddr_t vaddr, swap_table st);
 
 //Use kfree function
 void pageTFree(page_table pt);
 
 uint32_t replace_page(page_table pt);
+
+ void add_to_chain(page_table pt);
+
+ void all_proc_page_out(page_table pt);
 
 #endif

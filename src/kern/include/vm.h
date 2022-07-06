@@ -65,6 +65,7 @@ void vm_tlbshootdown(const struct tlbshootdown *);
 #if OPT_PAGING
 int vm_enabled;
 swap_table ST;
+page_table IPT;
 
 uint32_t handle_page_fault(vaddr_t faultaddress);
 #endif

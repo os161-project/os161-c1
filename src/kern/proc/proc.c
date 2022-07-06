@@ -163,6 +163,7 @@ proc_create(const char *name)
 
 #if OPT_PAGING
 	proc->start_pt_i = -1;
+	proc->last_pt_i=-1;
 #endif
 
 	proc_init_waitpid(proc,name);

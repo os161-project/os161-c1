@@ -12,9 +12,9 @@ swap_table swapTableInit(char swap_file_name[]);
 
 swap_table getSwapTable();
 
-void swapout(swap_table st, uint32_t index, paddr_t paddr, page_table pt);
+void swapout(swap_table st, uint32_t index, paddr_t paddr, uint32_t page_number);
 
-void swapin(swap_table st, uint32_t index, paddr_t paddr, page_table pt/*, vaddr_t faultaddress*/);
+void swapin(swap_table st, uint32_t index, paddr_t paddr, vaddr_t faultaddress);
 
 int getFirstFreeChunckIndex(swap_table st);
 

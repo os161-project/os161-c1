@@ -69,7 +69,6 @@
  */
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 
-page_table IPT;
 
 void
 vm_bootstrap(void)
@@ -129,10 +128,17 @@ alloc_kpages(unsigned npages)
 	paddr_t pa;
 
 	dumbvm_can_sleep();
-	pa = getppages(npages);
-	if (pa==0) {
-		return 0;
+	if(vm_enabled){
+		//alloc n contiguous pages
+
+	}else{
+		pa = getppages(npages);
+		if (pa==0) {
+			return 0;
+		}
+
 	}
+
 	return PADDR_TO_KVADDR(pa);
 }
 
@@ -243,7 +249,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		if(paddr==-1){
 			//PAGE FAULT
 			//TO_DO: handle page fault
-			paddr = handle_page_fault(faultaddress);
+			paddr = pageIn(IPT, curproc->p_pid, faultaddress, ST);
 		}
 		//add to tlb
 		paddr = paddr & PAGE_FRAME;
@@ -257,23 +263,3 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	return EFAULT;
 }
 
-uint32_t handle_page_fault(vaddr_t faultaddress){
-	uint32_t paddr_t;
-	//TO-DO: here we need to load a page from disk into memory
-	(void)paddr_t;
-	uint32_t victim_frame;
-	int chunk_index = getSwapChunk(ST, faultaddress), free_chunk_index;
-	if(chunk_index == -1){
-		panic("Unavailable chunk in swap file!\nThis shouldn't happen...\n");
-	}
-	// We have to implement a search for free frames, now I'm assuming the IPT is full...
-	victim_frame = replace_page(IPT);
-	free_chunk_index = getFirstFreeChunckIndex(ST);
-	if(free_chunk_index == -1){
-		panic("Wait...is swap area full?!");
-	}
-	// As I said...I'm covering the replacement case, if we have a free frame it's not necessary
-	swapout(ST, free_chunk_index, victim_frame << 12, IPT);
-	swapin(ST, chunk_index, victim_frame << 12, IPT/*, faultaddress*/);
-	return 0;
-}

@@ -7,6 +7,7 @@
 #include <vfs.h>
 #include <spl.h>
 #include <proc.h>
+#include <current.h>
 
 // S = Swapped bit
 //<----------------20------------>|<----6-----><-----6--->|
@@ -42,21 +43,15 @@ swap_table swapTableInit(char swap_file_name[]){
     return result;
 }
 
-void swapout(swap_table st, uint32_t index, paddr_t paddr, page_table pt){
+void swapout(swap_table st, uint32_t index, paddr_t paddr, uint32_t page_number){
     int spl=splhigh();
     struct uio swap_uio;
     struct iovec iov;
-    uint32_t index_pt, page_number, PID;
     uio_kinit(&iov, &swap_uio, (void*)PADDR_TO_KVADDR(paddr & PAGE_FRAME), PAGE_SIZE, index*PAGE_SIZE, UIO_WRITE);
-    index_pt = (paddr & PAGE_FRAME) >> 12;
-    page_number = getPageN(pt, index_pt);
-    PID = getPID(pt, index_pt);
-
-    // Set page as invalid in IPT
-    setInvalid(pt, index_pt);
+  
 
     // Add page into swap table
-    st->entries[index] = SET_PN(SET_PID(SET_SWAPPED(st->entries[index], 0), PID), page_number);
+    st->entries[index] = SET_PN(SET_PID(SET_SWAPPED(st->entries[index], 0), curproc->p_pid), page_number);
 
     splx(spl);
     int result = VOP_WRITE(st->fp, &swap_uio);
@@ -67,22 +62,19 @@ void swapout(swap_table st, uint32_t index, paddr_t paddr, page_table pt){
     splx(spl);
 }
 
-void swapin(swap_table st, uint32_t index, paddr_t paddr, page_table pt/*, vaddr_t faultaddress*/){
+void swapin(swap_table st, uint32_t index, paddr_t paddr, vaddr_t faultaddress){
     int spl=splhigh(), result;
     struct uio swap_uio;
     struct iovec iov;
-    uio_kinit(&iov, &swap_uio, (void*)PADDR_TO_KVADDR(paddr & PAGE_FRAME), PAGE_SIZE, index*PAGE_SIZE, UIO_READ);
-
-    // Insert page into page table
-    addEntry(pt, GET_PN(st->entries[index]), paddr >> 12, GET_PID(st->entries[index]));
+   // uio_kinit(&iov, &swap_uio, (void*)PADDR_TO_KVADDR(paddr & PAGE_FRAME), PAGE_SIZE, index*PAGE_SIZE, UIO_READ);
 
     // Remove page from swap table
     st->entries[index] = SET_SWAPPED(st->entries[index], 1);
 
     splx(spl);
-    result=VOP_READ(st->fp, &swap_uio);
+    //result=VOP_READ(st->fp, &swap_uio);
 
-	/*iov.iov_ubase = (userptr_t)(faultaddress & PAGE_FRAME);
+	iov.iov_ubase = (userptr_t)(faultaddress & PAGE_FRAME);
 	iov.iov_len = PAGE_SIZE;		 // length of the memory space
 	swap_uio.uio_iov = &iov;
 	swap_uio.uio_iovcnt = 1;
@@ -91,9 +83,11 @@ void swapin(swap_table st, uint32_t index, paddr_t paddr, page_table pt/*, vaddr
 	swap_uio.uio_segflg = UIO_USERISPACE;
 	swap_uio.uio_rw = UIO_READ;
 	swap_uio.uio_space = proc_getas();
-    result = VOP_READ(st->fp, &swap_uio);*/
+    result = VOP_READ(st->fp, &swap_uio);
     if(result) 
         panic("VM: SWAPIN Failed");
+
+    (void) paddr;
 }
 
 int getFirstFreeChunckIndex(swap_table st){

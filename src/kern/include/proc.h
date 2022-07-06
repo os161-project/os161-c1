@@ -79,6 +79,7 @@ struct proc {
         struct cv *p_cv;
         struct lock *p_lock_cv;
 		int start_pt_i;
+		int last_pt_i;
 #endif
 
 };
