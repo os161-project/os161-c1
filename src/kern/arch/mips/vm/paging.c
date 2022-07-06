@@ -82,6 +82,8 @@ vm_bootstrap(void)
 	spinlock_acquire(&stealmem_lock);
 	paddr_t ram_user_base = ram_stealmem(0);
 	spinlock_release(&stealmem_lock);
+	// (- PAGE_SIZE) because of kmalloc which is going to call alloc_kpages which calls ram_stealmem starting from the first address we should keep track of
+	// in this way we don't keep track of the page where the IPT and ST are stored
 	IPT = pageTInit((ram_size-ram_user_base-PAGE_SIZE)/PAGE_SIZE);
 	vm_enabled = 1;
 
@@ -130,7 +132,7 @@ alloc_kpages(unsigned npages)
 	dumbvm_can_sleep();
 	if(vm_enabled){
 		//alloc n contiguous pages
-
+		pa = getppages(npages);
 	}else{
 		pa = getppages(npages);
 		if (pa==0) {

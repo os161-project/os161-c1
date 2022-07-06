@@ -66,7 +66,7 @@ void swapin(swap_table st, uint32_t index, paddr_t paddr, vaddr_t faultaddress){
     int spl=splhigh(), result;
     struct uio swap_uio;
     struct iovec iov;
-   // uio_kinit(&iov, &swap_uio, (void*)PADDR_TO_KVADDR(paddr & PAGE_FRAME), PAGE_SIZE, index*PAGE_SIZE, UIO_READ);
+    //uio_kinit(&iov, &swap_uio, (void*)PADDR_TO_KVADDR(paddr & PAGE_FRAME), PAGE_SIZE, index*PAGE_SIZE, UIO_READ);
 
     // Remove page from swap table
     st->entries[index] = SET_SWAPPED(st->entries[index], 1);
@@ -98,7 +98,7 @@ int getFirstFreeChunckIndex(swap_table st){
     return -1;
 }
 
-void elf_to_swap(swap_table st, struct vnode *v, off_t offset, uint32_t init_page_n, size_t memsize, uint32_t PID){
+void elf_to_swap(swap_table st, struct vnode *v, off_t offset, uint32_t init_page_n, size_t memsize, pid_t PID){
     int spl=splhigh();
     struct iovec iov_swap, iov_elf;
 	struct uio ku_swap, ku_elf;
@@ -168,11 +168,18 @@ void elf_to_swap(swap_table st, struct vnode *v, off_t offset, uint32_t init_pag
     splx(spl);
 }
 
-int getSwapChunk(swap_table st, vaddr_t faultaddress){
+int getSwapChunk(swap_table st, vaddr_t faultaddress, pid_t pid){
     uint32_t page_n = faultaddress >> 12;
     for(uint32_t i = 0; i < st->size; i++){
-        if(GET_PN(st->entries[i]) == page_n && !IS_SWAPPED(st->entries[i]))
+        if(GET_PN(st->entries[i]) == page_n && GET_PID(st->entries[i]) == (uint32_t)pid && !IS_SWAPPED(st->entries[i]))
             return i;
     }
     return -1;
+}
+
+void all_proc_chunk_out(swap_table st){
+    for(uint32_t i = 0; i < st->size; i++){
+        if(GET_PID(st->entries[i]) == (uint32_t)curproc->p_pid)
+            st->entries[i] = SET_SWAPPED(st->entries[i], 1);
+    }
 }

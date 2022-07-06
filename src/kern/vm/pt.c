@@ -39,13 +39,15 @@ struct pT{
     //the next free frame is the one indexed by the next field in the low part
     uint32_t first_free_frame;
     bool is_full;
-    int num_occupied_entries;
+    uint32_t num_occupied_entries;
+    paddr_t mem_base_addr;
 };
 
 page_table pageTInit(uint32_t n_pages){
     uint32_t i;
     page_table tmp = kmalloc(sizeof(*tmp));
     tmp->entries = kmalloc(n_pages * sizeof(*(tmp->entries)));
+    tmp->mem_base_addr = ram_stealmem(0);
     tmp->size = n_pages;
     tmp->first_free_frame=0;
     tmp->is_full=false;
@@ -165,10 +167,10 @@ paddr_t pageIn(page_table pt, uint32_t pid, vaddr_t vaddr, swap_table ST) {
         add_to_chain(pt);
 
         //update the first free frame index
-        paddr= pt->first_free_frame * PAGE_SIZE;
+        paddr= pt->first_free_frame * PAGE_SIZE + pt->mem_base_addr;
         pt->first_free_frame = GET_NEXT(pt->entries[pt->first_free_frame].low); 
         //load a frame in memory
-        chunk_index = getSwapChunk(ST, vaddr); // add pid
+        chunk_index = getSwapChunk(ST, vaddr, pid); // add pid
         if(chunk_index == -1){
 		    panic("Unavailable chunk in swap file!\nThis shouldn't happen...\n");
 	    }
@@ -181,9 +183,9 @@ paddr_t pageIn(page_table pt, uint32_t pid, vaddr_t vaddr, swap_table ST) {
 
     addEntry(pt, (vaddr & PAGE_FRAME), page_index, curproc->p_pid);
 
-    paddr= page_index * PAGE_SIZE;
+    paddr= page_index * PAGE_SIZE + pt->mem_base_addr;
 
-    chunk_index = getSwapChunk(ST, vaddr);
+    chunk_index = getSwapChunk(ST, vaddr, pid);
 	if(chunk_index == -1){
 		panic("Unavailable chunk in swap file!\nThis shouldn't happen...\n");
 	}
@@ -205,14 +207,12 @@ paddr_t pageIn(page_table pt, uint32_t pid, vaddr_t vaddr, swap_table ST) {
     // Maybe we can call addEntry function and modify it
     /*pt->entries[index].low = SET_PID(pt->entries[index].low, pid);
     pt->entries[index].hi = SET_VALID(SET_CHAIN(pt->entries[index].hi, 0), 1);*/
-   
-    (void)pid;
     splx(spl);
 }
 
 void  all_proc_page_out(page_table pt){
     //invalidate all the pages of the process
      for(int i = curproc->start_pt_i; i != -1 && HAS_CHAIN(pt->entries[i].hi); i = GET_NEXT(pt->entries[i].low)){
-        SET_VALID(pt->entries[i].hi,0);
+        pt->entries[i].hi = SET_VALID(pt->entries[i].hi,0);
     }
 }

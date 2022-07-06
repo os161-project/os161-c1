@@ -27,9 +27,13 @@ sys__exit(int status)
 #if OPT_PAGING
   struct proc *p = curproc;
   p->p_status = status & 0xff; /* just lower 8 bits returned */
+
   // invalidate all the page of the process that has called the exit
   all_proc_page_out(IPT);
-  //TO-DO : invalidate the chunks of the swap table
+
+  // Invalidate all process chunks
+  all_proc_chunk_out(ST);
+  
   proc_remthread(curthread);
   lock_acquire(p->p_lock_cv);
   cv_signal(p->p_cv, p->p_lock_cv);
