@@ -39,7 +39,7 @@ struct pT{
     //the next free frame is the one indexed by the next field in the low part
     uint32_t first_free_frame;
     bool is_full;
-    int num_occupied_entries;
+    uint32_t num_occupied_entries;
 };
 
 page_table pageTInit(uint32_t n_pages){
@@ -66,6 +66,8 @@ page_table pageTInit(uint32_t n_pages){
 //Add a new entry into page table, set V, set next and chain bit to zero.
 void addEntry(page_table pt, uint32_t page_n, uint32_t index, uint32_t pid){
     
+    spinlock_acquire(&vm_lock);
+
     if((page_n << 12)> MIPS_KSEG0){
         //set the frame as part of the kernel
         pt->entries[index].hi = SET_PN(SET_CHAIN(SET_VALID(SET_KERNEL(pt->entries[index].hi, 1),1), 0), page_n);
@@ -80,51 +82,71 @@ void addEntry(page_table pt, uint32_t page_n, uint32_t index, uint32_t pid){
     if(pt->num_occupied_entries == pt->size)
         pt->is_full=true;
     
+    spinlock_release(&vm_lock);
+
     return;
 }
 
 //Return the index where page number is stored in, if page is not stored in memory, return -1
 int getFrameN(page_table pt, uint32_t page_n){
     //KASSERT(GET_PID(pt->entries[curproc->start_pt_i].low) == curproc->p_pid);
+    uint32_t frame_n = -1;
+    spinlock_acquire(&vm_lock);
     for(int i = curproc->start_pt_i; i != -1 && HAS_CHAIN(pt->entries[i].hi); i = GET_NEXT(pt->entries[i].low)){
         if(GET_PN(pt->entries[i].hi) == page_n){
-            return i;
+            frame_n = i;
+            break;
         }
     }
-    return -1;
+    spinlock_release(&vm_lock);
+    return frame_n;
 }
 
 // Return the page number for a given page table entry (corresponding to the given index)
 uint32_t getPageN(page_table pt, uint32_t index) {
+    uint32_t page_n; 
+    spinlock_acquire(&vm_lock);
     KASSERT(pt->entries != NULL);
-    return GET_PN(pt->entries[index].hi);
+    page_n = GET_PN(pt->entries[index].hi);
+    spinlock_release(&vm_lock);
+    return page_n;
 }
 
 // Return the PID stored in a page table entry, corresponding to the given index
 uint32_t getPID(page_table pt, uint32_t index) {
+    pid_t pid;
+    spinlock_acquire(&vm_lock);
     KASSERT(pt->entries != NULL);
-    return GET_PID(pt->entries[index].low);
+    pid = GET_PID(pt->entries[index].low);
+    spinlock_release(&vm_lock);
+    return pid;
 }
 
 void setInvalid(page_table pt, uint32_t index){
+    spinlock_acquire(&vm_lock);
     pt->entries[index].hi = SET_VALID(pt->entries[index].hi, 0);
+    spinlock_release(&vm_lock);
     return;
 }
 
 //Use kfree function
 void pageTFree(page_table pt){
+    spinlock_acquire(&vm_lock);
     kfree(pt->entries);
     kfree(pt);
+    spinlock_release(&vm_lock);
     return;
 }
 
 uint32_t replace_page(page_table pt){
-    int spl = splhigh();
+    int spl = splhigh(); // TODO: Check if this splhigh is needed or not
     uint32_t page_index;
 
+    spinlock_acquire(&vm_lock);
     do{
         page_index = random() % pt->size;
     }while(IS_KERNEL(pt->entries[page_index].hi));
+    spinlock_release(&vm_lock);
 
     splx(spl);
     return page_index;
@@ -132,7 +154,7 @@ uint32_t replace_page(page_table pt){
 
  void add_to_chain(page_table pt){
 
-
+    spinlock_acquire(&vm_lock);
     if(curproc->last_pt_i==-1){
         //we need to update also the head of the chain
         curproc->start_pt_i = pt->first_free_frame;
@@ -145,7 +167,7 @@ uint32_t replace_page(page_table pt){
     pt->entries[curproc->last_pt_i].low = SET_NEXT(pt->entries[curproc->last_pt_i].low, pt->first_free_frame);
 
     curproc->last_pt_i=pt->first_free_frame;
-
+    spinlock_release(&vm_lock);
  }
 
 
@@ -212,7 +234,9 @@ paddr_t pageIn(page_table pt, uint32_t pid, vaddr_t vaddr, swap_table ST) {
 
 void  all_proc_page_out(page_table pt){
     //invalidate all the pages of the process
+    spinlock_acquire(&vm_lock);
      for(int i = curproc->start_pt_i; i != -1 && HAS_CHAIN(pt->entries[i].hi); i = GET_NEXT(pt->entries[i].low)){
-        SET_VALID(pt->entries[i].hi,0);
+        pt->entries[i].hi = SET_VALID(pt->entries[i].hi,0);
     }
+    spinlock_release(&vm_lock);
 }
