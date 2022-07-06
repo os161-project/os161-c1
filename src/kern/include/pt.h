@@ -12,7 +12,7 @@ page_table pageTInit(uint32_t n_pages);
 void addEntry(page_table pt, uint32_t page_n, uint32_t index, uint32_t pid);
 
 // Return the index (frame number) where page number is stored in, if page is not stored in memory, return -1
-int getFrameN(page_table pt, uint32_t page_n);
+int getFrameAddress(page_table pt, uint32_t page_n);
 
 // Return the page number for a given page table entry (corresponding to the given index)
 uint32_t getPageN(page_table pt, uint32_t index);
@@ -30,10 +30,12 @@ void pageTFree(page_table pt);
 
 uint32_t replace_page(page_table pt);
 
- void add_to_chain(page_table pt);
+void add_to_chain(page_table pt, int last_pt_i);
 
- void all_proc_page_out(page_table pt);
+void all_proc_page_out(page_table pt);
 
-paddr_t alloc_n_contiguos_pages(int npages, pid_t p_pid, page_table pt);
+paddr_t alloc_n_contiguos_pages(uint32_t npages, pid_t p_pid, page_table pt);
+
+void print_pt(page_table pt);
 
 #endif

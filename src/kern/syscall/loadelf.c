@@ -171,7 +171,9 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 	struct iovec iov;
 	struct uio ku;
 	struct addrspace *as;
-
+#if OPT_PAGING
+	size_t mem_tot = 0;
+#endif
 	as = proc_getas();
 
 	/*
@@ -299,10 +301,18 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 				ph.p_type);
 			return ENOEXEC;
 		}
+#if OPT_PAGING
+		mem_tot += ph.p_memsz;
 
+		result = load_segment(as, v, ph.p_offset, ph.p_vaddr,
+				      mem_tot, ph.p_filesz,
+				      ph.p_flags & PF_X);
+
+#else
 		result = load_segment(as, v, ph.p_offset, ph.p_vaddr,
 				      ph.p_memsz, ph.p_filesz,
 				      ph.p_flags & PF_X);
+#endif
 		if (result) {
 			return result;
 		}

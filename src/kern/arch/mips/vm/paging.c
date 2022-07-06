@@ -57,7 +57,7 @@ void
 vm_bootstrap(void)
 {
 	vm_enabled = 0;
-	spinlock_init(&vm_lock);
+	//spinlock_init(&vm_lock);
 
 	// Swap area init
 	char swap_file_name[] = "lhd0raw:";
@@ -72,26 +72,6 @@ vm_bootstrap(void)
 	// in this way we don't keep track of the page where the IPT and ST are stored
 	IPT = pageTInit((ram_size-ram_user_base-PAGE_SIZE)/PAGE_SIZE);
 	vm_enabled = 1;
-}
-
-/*
- * Check if we're in a context that can sleep. While most of the
- * operations in dumbvm don't in fact sleep, in a real VM system many
- * of them would. In those, assert that sleeping is ok. This helps
- * avoid the situation where syscall-layer code that works ok with
- * dumbvm starts blowing up during the VM assignment.
- */
-static
-void
-dumbvm_can_sleep(void)
-{
-	if (CURCPU_EXISTS()) {
-		/* must not hold spinlocks */
-		KASSERT(curcpu->c_spinlocks == 0);
-
-		/* must not be in an interrupt handler */
-		KASSERT(curthread->t_in_interrupt == 0);
-	}
 }
 
 static
@@ -113,7 +93,6 @@ vaddr_t
 alloc_kpages(unsigned npages)
 {
 	paddr_t pa;
-	dumbvm_can_sleep();
 	if(vm_enabled) {
 		//alloc n contiguous pages
 		pa= alloc_n_contiguos_pages(npages, curproc->p_pid, IPT);
@@ -132,9 +111,9 @@ free_kpages(vaddr_t addr)
 {
 	/* nothing - leak the memory. */
 	if(vm_enabled) {
-		spinlock_acquire(&vm_lock);
+		//spinlock_acquire(&vm_lock);
 		// Do something ...
-		spinlock_release(&vm_lock);
+		//spinlock_release(&vm_lock);
 	}
 	
 	(void)addr;
@@ -231,11 +210,11 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 	/* Disable interrupts on this CPU while frobbing the TLB. */
 	spl = splhigh();
-
+	//spinlock_acquire(&vm_lock);
 	if(faultaddress <=MIPS_KSEG0){
 
 		//retrieve the frame number in the page table
-		paddr = getFrameN(IPT,(faultaddress & PAGE_FRAME) >> 12);
+		paddr = getFrameAddress(IPT,(faultaddress & PAGE_FRAME) >> 12);
 		if(paddr==-1){
 			//PAGE FAULT
 			//TO_DO: handle page fault
@@ -243,13 +222,13 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		}
 		//add to tlb
 		paddr = paddr & PAGE_FRAME;
-		TLB_Insert(faultaddress,paddr);
-
 		
+		TLB_Insert(faultaddress,paddr);
 		splx(spl);
+		//spinlock_release(&vm_lock);
 		return 0;
 	}
-
+	//spinlock_release(&vm_lock);
 	return EFAULT;
 }
 

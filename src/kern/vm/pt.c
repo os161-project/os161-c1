@@ -55,12 +55,12 @@ page_table pageTInit(uint32_t n_pages){
     for(i = 0; i < n_pages-1; i++){
         //the chain of free frames is built here
         //when the ipt is initialized the list of free frames includes all the frames
-        tmp->entries[i].hi = SET_PN(SET_VALID(SET_CHAIN(tmp->entries[i].hi, 1), 0), 0);
+        tmp->entries[i].hi = SET_KERNEL(SET_PN(SET_VALID(SET_CHAIN(tmp->entries[i].hi, 1), 0), 0), 0);
         tmp->entries[i].low = SET_NEXT(SET_PID(tmp->entries[i].low, 0), (i+1));
         
     }
     //the last frame has the chain bit set to 0 (no chain) 
-    tmp->entries[i].hi= SET_PN(SET_VALID(SET_CHAIN(tmp->entries[i].hi,0),0),0);
+    tmp->entries[i].hi= SET_KERNEL(SET_PN(SET_VALID(SET_CHAIN(tmp->entries[i].hi,0),0),0),0);
     tmp->entries[i].low = SET_NEXT(SET_PID(tmp->entries[i].low, 0), 0);
     return tmp;
 }
@@ -68,9 +68,9 @@ page_table pageTInit(uint32_t n_pages){
 //Add a new entry into page table, set V, set next and chain bit to zero.
 void addEntry(page_table pt, uint32_t page_n, uint32_t index, uint32_t pid){
     
-    spinlock_acquire(&vm_lock);
+    
 
-    if((page_n << 12)> MIPS_KSEG0){
+    if((page_n << 12) > MIPS_KSEG0){
         //set the frame as part of the kernel
         pt->entries[index].hi = SET_PN(SET_CHAIN(SET_VALID(SET_KERNEL(pt->entries[index].hi, 1),1), 0), page_n);
         pt->entries[index].low = SET_NEXT(pt->entries[index].low, 0);
@@ -84,59 +84,62 @@ void addEntry(page_table pt, uint32_t page_n, uint32_t index, uint32_t pid){
     if(pt->num_occupied_entries == pt->size)
         pt->is_full=true;
     
-    spinlock_release(&vm_lock);
+    
 
     return;
 }
 
 //Return the index where page number is stored in, if page is not stored in memory, return -1
-int getFrameN(page_table pt, uint32_t page_n){
+int getFrameAddress(page_table pt, uint32_t page_n){
     //KASSERT(GET_PID(pt->entries[curproc->start_pt_i].low) == curproc->p_pid);
     uint32_t frame_n = -1;
-    spinlock_acquire(&vm_lock);
-    for(int i = curproc->start_pt_i; i != -1 && HAS_CHAIN(pt->entries[i].hi); i = GET_NEXT(pt->entries[i].low)){
+    
+    for(int i = curproc->start_pt_i; i != -1; i = GET_NEXT(pt->entries[i].low)){
         if(GET_PN(pt->entries[i].hi) == page_n){
             frame_n = i;
+            frame_n = frame_n * PAGE_SIZE + pt->mem_base_addr;
             break;
         }
+        if(!HAS_CHAIN(pt->entries[i].hi))
+            break;
     }
-    spinlock_release(&vm_lock);
+    
     return frame_n;
 }
 
 // Return the page number for a given page table entry (corresponding to the given index)
 uint32_t getPageN(page_table pt, uint32_t index) {
     uint32_t page_n; 
-    spinlock_acquire(&vm_lock);
+    
     KASSERT(pt->entries != NULL);
     page_n = GET_PN(pt->entries[index].hi);
-    spinlock_release(&vm_lock);
+    
     return page_n;
 }
 
 // Return the PID stored in a page table entry, corresponding to the given index
 uint32_t getPID(page_table pt, uint32_t index) {
     pid_t pid;
-    spinlock_acquire(&vm_lock);
+    
     KASSERT(pt->entries != NULL);
     pid = GET_PID(pt->entries[index].low);
-    spinlock_release(&vm_lock);
+    
     return pid;
 }
 
 void setInvalid(page_table pt, uint32_t index){
-    spinlock_acquire(&vm_lock);
+    
     pt->entries[index].hi = SET_VALID(pt->entries[index].hi, 0);
-    spinlock_release(&vm_lock);
+    
     return;
 }
 
 //Use kfree function
 void pageTFree(page_table pt){
-    spinlock_acquire(&vm_lock);
+    
     kfree(pt->entries);
     kfree(pt);
-    spinlock_release(&vm_lock);
+    
     return;
 }
 
@@ -144,59 +147,61 @@ uint32_t replace_page(page_table pt){
     int spl = splhigh(); // TODO: Check if this splhigh is needed or not
     uint32_t page_index;
 
-    spinlock_acquire(&vm_lock);
+    
     do{
         page_index = random() % pt->size;
     }while(IS_KERNEL(pt->entries[page_index].hi));
-    spinlock_release(&vm_lock);
+    
 
     splx(spl);
     return page_index;
 }
 
- void add_to_chain(page_table pt){
+ void add_to_chain(page_table pt, int last_pt_i){
 
-    spinlock_acquire(&vm_lock);
+    
     if(curproc->last_pt_i==-1){
         //we need to update also the head of the chain
-        curproc->start_pt_i = pt->first_free_frame;
-        curproc->last_pt_i=pt->first_free_frame;
+        curproc->start_pt_i = last_pt_i;
+        curproc->last_pt_i = last_pt_i;
         return;
     }
     //the penultimate frame of the chain is updated
     //the chain is updated and the next field is updated indexing the last frame
     pt->entries[curproc->last_pt_i].hi = SET_CHAIN(pt->entries[curproc->last_pt_i].hi, 1);
-    pt->entries[curproc->last_pt_i].low = SET_NEXT(pt->entries[curproc->last_pt_i].low, pt->first_free_frame);
+    pt->entries[curproc->last_pt_i].low = SET_NEXT(pt->entries[curproc->last_pt_i].low, last_pt_i);
 
-    curproc->last_pt_i=pt->first_free_frame;
-    spinlock_release(&vm_lock);
+    curproc->last_pt_i=last_pt_i;
+    
  }
 
 
 paddr_t pageIn(page_table pt, uint32_t pid, vaddr_t vaddr, swap_table ST) {
     int spl;
     paddr_t paddr, page_index;
-    int chunk_index, free_chunk_index;
+    int chunk_index, free_chunk_index, free_frame_index;
 
     spl = splhigh();
     
     if(!pt->is_full){
+        free_frame_index = pt->first_free_frame;
+        //update the first free frame index
+        pt->first_free_frame = GET_NEXT(pt->entries[pt->first_free_frame].low);
         //if the ipt is not full
        // add an entry in the first free frame of the ipt
-        addEntry(pt, (vaddr & PAGE_FRAME) >> 12,  pt->first_free_frame, curproc->p_pid);
+        addEntry(pt, (vaddr & PAGE_FRAME) >> 12,  free_frame_index, curproc->p_pid);
 
         //add the new entry to the chain of the process
-        add_to_chain(pt);
+        add_to_chain(pt, free_frame_index);
 
-        //update the first free frame index
-        paddr= pt->first_free_frame * PAGE_SIZE + pt->mem_base_addr;
-        pt->first_free_frame = GET_NEXT(pt->entries[pt->first_free_frame].low); 
+        paddr= free_frame_index * PAGE_SIZE + pt->mem_base_addr;
         //load a frame in memory
         chunk_index = getSwapChunk(ST, vaddr, pid); // add pid
         if(chunk_index == -1){
 		    panic("Unavailable chunk in swap file!\nThis shouldn't happen...\n");
 	    }
         swapin(ST, chunk_index, paddr, vaddr);
+        splx(spl);
         return paddr; 
     }
 
@@ -219,6 +224,7 @@ paddr_t pageIn(page_table pt, uint32_t pid, vaddr_t vaddr, swap_table ST) {
 
 	swapout(ST, free_chunk_index, paddr, (vaddr & PAGE_FRAME));
 	swapin(ST, chunk_index, paddr, vaddr);
+    splx(spl);
 
     return paddr;
 
@@ -229,24 +235,23 @@ paddr_t pageIn(page_table pt, uint32_t pid, vaddr_t vaddr, swap_table ST) {
     // Maybe we can call addEntry function and modify it
     /*pt->entries[index].low = SET_PID(pt->entries[index].low, pid);
     pt->entries[index].hi = SET_VALID(SET_CHAIN(pt->entries[index].hi, 0), 1);*/
-    splx(spl);
 }
 
 void  all_proc_page_out(page_table pt){
     //invalidate all the pages of the process
-    spinlock_acquire(&vm_lock);
+    
      for(int i = curproc->start_pt_i; i != -1 && HAS_CHAIN(pt->entries[i].hi); i = GET_NEXT(pt->entries[i].low)){
         pt->entries[i].hi = SET_VALID(pt->entries[i].hi,0);
     }
 }
 
 
-paddr_t alloc_n_contiguos_pages(int npages, pid_t pid, page_table pt){
-	int i;
+paddr_t alloc_n_contiguos_pages(uint32_t npages, pid_t pid, page_table pt){
+	uint32_t i;
     int spl=splhigh();
 
 	unsigned int count=0, swap_index=0, between_kernel_page=0;
-    unsigned int big_count=0,big_index=0,index, contiguous_pages=0;
+    unsigned int big_count=0, big_index=0, index = 0, contiguous_pages=0;
     int free_chunk_index;
 
 	for(i=0; i< pt->size; i++){
@@ -284,8 +289,6 @@ paddr_t alloc_n_contiguos_pages(int npages, pid_t pid, page_table pt){
 		
 	}
 
-    uint32_t chunk;
-
     //check if I have NOT found n contiguous free pages
     if(count<npages){
         if(big_count < npages){
@@ -320,7 +323,7 @@ paddr_t alloc_n_contiguos_pages(int npages, pid_t pid, page_table pt){
 
     for(i=index; i< index+ npages; i++){
         //PADDR ??????
-        addEntry(pt, PADDR_TO_KVADDR((i* PAGE_SIZE) + pt->mem_base_addr), i, pid);
+        addEntry(pt, (PADDR_TO_KVADDR((i* PAGE_SIZE) + pt->mem_base_addr)) >> 12, i, pid);
     }
 
     splx(spl);
@@ -328,4 +331,10 @@ paddr_t alloc_n_contiguos_pages(int npages, pid_t pid, page_table pt){
 
     return (index * PAGE_SIZE) + pt->mem_base_addr;
 	
+}
+
+void print_pt(page_table pt){
+    for(uint32_t i = 0; i < 5; i++){
+        kprintf("Hi: %x low: %x\n", pt->entries[i].hi, pt->entries[i].low);
+    }
 }

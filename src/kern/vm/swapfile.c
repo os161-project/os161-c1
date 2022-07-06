@@ -104,7 +104,7 @@ void elf_to_swap(swap_table st, struct vnode *v, off_t offset, uint32_t init_pag
 	struct uio ku_swap, ku_elf;
     char buffer[PAGE_SIZE / 2];
     int chunk_index, result;
-    uint32_t n_chuncks = (memsize + PAGE_SIZE - 1) / PAGE_SIZE, i, j, incr = PAGE_SIZE / 2;
+    uint32_t n_chuncks = (memsize + PAGE_SIZE - 1 - offset) / PAGE_SIZE, i, j, incr = PAGE_SIZE / 2;
     splx(spl);
     for(i = 0; i < n_chuncks - 1; i++, init_page_n++){
         // Get first chunck available
