@@ -44,22 +44,6 @@
 #include <mainbus.h>
 #include "vm_tlb.h"
 
-/*
- * Dumb MIPS-only "VM system" that is intended to only be just barely
- * enough to struggle off the ground. You should replace all of this
- * code while doing the VM assignment. In fact, starting in that
- * assignment, this file is not included in your kernel!
- *
- * NOTE: it's been found over the years that students often begin on
- * the VM assignment by copying dumbvm.c and trying to improve it.
- * This is not recommended. dumbvm is (more or less intentionally) not
- * a good design reference. The first recommendation would be: do not
- * look at dumbvm at all. The second recommendation would be: if you
- * do, be sure to review it from the perspective of comparing it to
- * what a VM system is supposed to do, and understanding what corners
- * it's cutting (there are many) and why, and more importantly, how.
- */
-
 /* under dumbvm, always have 72k of user stack */
 /* (this must be > 64K so argument blocks of size ARG_MAX will fit) */
 #define DUMBVM_STACKPAGES    18
@@ -69,14 +53,16 @@
  */
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 
-
 void
 vm_bootstrap(void)
 {
 	vm_enabled = 0;
+	spinlock_init(&vm_lock);
+
 	// Swap area init
 	char swap_file_name[] = "lhd0raw:";
 	ST = swapTableInit(swap_file_name);
+
 	// IPT init
 	size_t ram_size = mainbus_ramsize();
 	spinlock_acquire(&stealmem_lock);
@@ -86,7 +72,6 @@ vm_bootstrap(void)
 	// in this way we don't keep track of the page where the IPT and ST are stored
 	IPT = pageTInit((ram_size-ram_user_base-PAGE_SIZE)/PAGE_SIZE);
 	vm_enabled = 1;
-
 }
 
 /*
@@ -128,11 +113,10 @@ vaddr_t
 alloc_kpages(unsigned npages)
 {
 	paddr_t pa;
-
 	dumbvm_can_sleep();
-	if(vm_enabled){
+	if(vm_enabled) {
 		//alloc n contiguous pages
-		pa = getppages(npages);
+		pa= alloc_n_contiguos_pages(npages, curproc->p_pid, IPT);
 	}else{
 		pa = getppages(npages);
 		if (pa==0) {
@@ -140,7 +124,6 @@ alloc_kpages(unsigned npages)
 		}
 
 	}
-
 	return PADDR_TO_KVADDR(pa);
 }
 
@@ -148,7 +131,12 @@ void
 free_kpages(vaddr_t addr)
 {
 	/* nothing - leak the memory. */
-
+	if(vm_enabled) {
+		spinlock_acquire(&vm_lock);
+		// Do something ...
+		spinlock_release(&vm_lock);
+	}
+	
 	(void)addr;
 }
 
@@ -264,4 +252,5 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 	return EFAULT;
 }
+
 

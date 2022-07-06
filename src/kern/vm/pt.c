@@ -68,6 +68,8 @@ page_table pageTInit(uint32_t n_pages){
 //Add a new entry into page table, set V, set next and chain bit to zero.
 void addEntry(page_table pt, uint32_t page_n, uint32_t index, uint32_t pid){
     
+    spinlock_acquire(&vm_lock);
+
     if((page_n << 12)> MIPS_KSEG0){
         //set the frame as part of the kernel
         pt->entries[index].hi = SET_PN(SET_CHAIN(SET_VALID(SET_KERNEL(pt->entries[index].hi, 1),1), 0), page_n);
@@ -82,51 +84,71 @@ void addEntry(page_table pt, uint32_t page_n, uint32_t index, uint32_t pid){
     if(pt->num_occupied_entries == pt->size)
         pt->is_full=true;
     
+    spinlock_release(&vm_lock);
+
     return;
 }
 
 //Return the index where page number is stored in, if page is not stored in memory, return -1
 int getFrameN(page_table pt, uint32_t page_n){
     //KASSERT(GET_PID(pt->entries[curproc->start_pt_i].low) == curproc->p_pid);
+    uint32_t frame_n = -1;
+    spinlock_acquire(&vm_lock);
     for(int i = curproc->start_pt_i; i != -1 && HAS_CHAIN(pt->entries[i].hi); i = GET_NEXT(pt->entries[i].low)){
         if(GET_PN(pt->entries[i].hi) == page_n){
-            return i;
+            frame_n = i;
+            break;
         }
     }
-    return -1;
+    spinlock_release(&vm_lock);
+    return frame_n;
 }
 
 // Return the page number for a given page table entry (corresponding to the given index)
 uint32_t getPageN(page_table pt, uint32_t index) {
+    uint32_t page_n; 
+    spinlock_acquire(&vm_lock);
     KASSERT(pt->entries != NULL);
-    return GET_PN(pt->entries[index].hi);
+    page_n = GET_PN(pt->entries[index].hi);
+    spinlock_release(&vm_lock);
+    return page_n;
 }
 
 // Return the PID stored in a page table entry, corresponding to the given index
 uint32_t getPID(page_table pt, uint32_t index) {
+    pid_t pid;
+    spinlock_acquire(&vm_lock);
     KASSERT(pt->entries != NULL);
-    return GET_PID(pt->entries[index].low);
+    pid = GET_PID(pt->entries[index].low);
+    spinlock_release(&vm_lock);
+    return pid;
 }
 
 void setInvalid(page_table pt, uint32_t index){
+    spinlock_acquire(&vm_lock);
     pt->entries[index].hi = SET_VALID(pt->entries[index].hi, 0);
+    spinlock_release(&vm_lock);
     return;
 }
 
 //Use kfree function
 void pageTFree(page_table pt){
+    spinlock_acquire(&vm_lock);
     kfree(pt->entries);
     kfree(pt);
+    spinlock_release(&vm_lock);
     return;
 }
 
 uint32_t replace_page(page_table pt){
-    int spl = splhigh();
+    int spl = splhigh(); // TODO: Check if this splhigh is needed or not
     uint32_t page_index;
 
+    spinlock_acquire(&vm_lock);
     do{
         page_index = random() % pt->size;
     }while(IS_KERNEL(pt->entries[page_index].hi));
+    spinlock_release(&vm_lock);
 
     splx(spl);
     return page_index;
@@ -134,7 +156,7 @@ uint32_t replace_page(page_table pt){
 
  void add_to_chain(page_table pt){
 
-
+    spinlock_acquire(&vm_lock);
     if(curproc->last_pt_i==-1){
         //we need to update also the head of the chain
         curproc->start_pt_i = pt->first_free_frame;
@@ -147,7 +169,7 @@ uint32_t replace_page(page_table pt){
     pt->entries[curproc->last_pt_i].low = SET_NEXT(pt->entries[curproc->last_pt_i].low, pt->first_free_frame);
 
     curproc->last_pt_i=pt->first_free_frame;
-
+    spinlock_release(&vm_lock);
  }
 
 
@@ -212,7 +234,98 @@ paddr_t pageIn(page_table pt, uint32_t pid, vaddr_t vaddr, swap_table ST) {
 
 void  all_proc_page_out(page_table pt){
     //invalidate all the pages of the process
+    spinlock_acquire(&vm_lock);
      for(int i = curproc->start_pt_i; i != -1 && HAS_CHAIN(pt->entries[i].hi); i = GET_NEXT(pt->entries[i].low)){
         pt->entries[i].hi = SET_VALID(pt->entries[i].hi,0);
     }
+}
+
+
+paddr_t alloc_n_contiguos_pages(int npages, pid_t pid, page_table pt){
+	int i;
+    int spl=splhigh();
+
+	unsigned int count=0, swap_index=0, between_kernel_page=0;
+    unsigned int big_count=0,big_index=0,index, contiguous_pages=0;
+    int free_chunk_index;
+
+	for(i=0; i< pt->size; i++){
+		if(IS_KERNEL(pt->entries[i].hi)){
+            between_kernel_page=0;
+        }else{
+            //last page was a kernel page, restart the count
+            if(between_kernel_page==0){
+                swap_index=i;
+            }
+            //increment the number of contiguous pages between two kernel pages
+            between_kernel_page++;
+
+            //if we have found more than npages contiguous between two kernel pages
+            // the hole could be a valid one
+            if(between_kernel_page >= npages){
+            //update index and size of the biggest hole found at this time
+                if(big_count > count){
+                    big_count= count;
+                    big_index= swap_index;
+                }
+            }
+        }
+        //if the page is not valid we can start the count
+        if(!IS_VALID(pt->entries[i].hi)){
+            index=i;
+            count=0;
+        }else{
+            //this page is not valid, check if we have found n contiguous free pages
+            if(count >=npages){
+                break;
+            }
+        }
+        count++;
+		
+	}
+
+    uint32_t chunk;
+
+    //check if I have NOT found n contiguous free pages
+    if(count<npages){
+        if(big_count < npages){
+            //this amount of contiguous pages cannot be obtained 
+            splx(spl);
+            panic("This amount of contiguous pages cannot be obtained\n");
+
+        }else{
+            
+            //we have enough contiguous pages between two kernel pages
+            for(i=big_index; i< big_index +big_count; i++){
+                //contiguous pages starts from 0
+                //this is used in order to stop the swapping out of the pages when it is no more necessary
+                contiguous_pages++;
+
+                if(IS_VALID(pt->entries[i].hi)){
+                    //if the page is valid i need to swap out
+
+                    free_chunk_index= getFirstFreeChunckIndex(ST);
+                    splx(spl);
+
+                    swapout(ST, free_chunk_index, (i*PAGE_SIZE) + pt->mem_base_addr, GET_PN(pt->entries[i].hi));
+                    setInvalid(pt,i);
+                }
+                if(contiguous_pages >= npages){
+                    break;
+                }
+            }
+            index= big_index;
+        }
+    }
+
+    for(i=index; i< index+ npages; i++){
+        //PADDR ??????
+        addEntry(pt, PADDR_TO_KVADDR((i* PAGE_SIZE) + pt->mem_base_addr), i, pid);
+    }
+
+    splx(spl);
+
+
+    return (index * PAGE_SIZE) + pt->mem_base_addr;
+	
 }

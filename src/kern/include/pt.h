@@ -34,4 +34,6 @@ uint32_t replace_page(page_table pt);
 
  void all_proc_page_out(page_table pt);
 
+paddr_t alloc_n_contiguos_pages(int npages, pid_t p_pid, page_table pt);
+
 #endif
