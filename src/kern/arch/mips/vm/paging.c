@@ -130,7 +130,7 @@ alloc_kpages(unsigned npages)
 	dumbvm_can_sleep();
 	if(vm_enabled){
 		//alloc n contiguous pages
-
+		pa= alloc_n_contiguos_pages(npages, curproc->p_pid, IPT);
 	}else{
 		pa = getppages(npages);
 		if (pa==0) {
@@ -262,4 +262,5 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 	return EFAULT;
 }
+
 

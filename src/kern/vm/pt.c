@@ -216,3 +216,93 @@ void  all_proc_page_out(page_table pt){
         SET_VALID(pt->entries[i].hi,0);
     }
 }
+
+
+paddr_t alloc_n_contiguos_pages(int npages, pid_t pid, page_table pt){
+	int i;
+    int spl=splhigh();
+
+	unsigned int count=0, swap_index=0, between_kernel_page=0;
+    unsigned int big_count=0,big_index=0,index, contiguous_pages=0;
+    int free_chunk_index;
+
+	for(i=0; i< pt->size; i++){
+		if(IS_KERNEL(pt->entries[i].hi)){
+            between_kernel_page=0;
+        }else{
+            //last page was a kernel page, restart the count
+            if(between_kernel_page==0){
+                swap_index=i;
+            }
+            //increment the number of contiguous pages between two kernel pages
+            between_kernel_page++;
+
+            //if we have found more than npages contiguous between two kernel pages
+            // the hole could be a valid one
+            if(between_kernel_page >= npages){
+            //update index and size of the biggest hole found at this time
+                if(big_count > count){
+                    big_count= count;
+                    big_index= swap_index;
+                }
+            }
+        }
+        //if the page is not valid we can start the count
+        if(!IS_VALID(pt->entries[i].hi)){
+            index=i;
+            count=0;
+        }else{
+            //this page is not valid, check if we have found n contiguous free pages
+            if(count >=npages){
+                break;
+            }
+        }
+        count++;
+		
+	}
+
+    uint32_t chunk;
+
+    //check if I have NOT found n contiguous free pages
+    if(count<npages){
+        if(big_count < npages){
+            //this amount of contiguous pages cannot be obtained 
+            splx(spl);
+            panic("This amount of contiguous pages cannot be obtained\n");
+
+        }else{
+            
+            //we have enough contiguous pages between two kernel pages
+            for(i=big_index; i< big_index +big_count; i++){
+                //contiguous pages starts from 0
+                //this is used in order to stop the swapping out of the pages when it is no more necessary
+                contiguous_pages++;
+
+                if(IS_VALID(pt->entries[i].hi)){
+                    //if the page is valid i need to swap out
+
+                    free_chunk_index= getFirstFreeChunckIndex(ST);
+                    splx(spl);
+
+                    swapout(ST, free_chunk_index, (i*PAGE_SIZE) + pt->mem_base_addr, GET_PN(pt->entries[i].hi));
+                    setInvalid(pt,i);
+                }
+                if(contiguous_pages >= npages){
+                    break;
+                }
+            }
+            index= big_index;
+        }
+    }
+
+    for(i=index; i< index+ npages; i++){
+        //PADDR ??????
+        addEntry(pt, PADDR_TO_KVADDR((i* PAGE_SIZE) + pt->mem_base_addr), i, pid);
+    }
+
+    splx(spl);
+
+
+    return (index * PAGE_SIZE) + pt->mem_base_addr;
+	
+}
