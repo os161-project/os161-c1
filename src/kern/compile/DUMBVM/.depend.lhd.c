@@ -3,7 +3,7 @@ lhd.o: ../../dev/lamebus/lhd.c ../../include/types.h \
  includelinks/machine/types.h ../../include/kern/errno.h \
  ../../include/lib.h ../../include/cdefs.h opt-noasserts.h \
  ../../include/uio.h ../../include/kern/iovec.h ../../include/membar.h \
- includelinks/machine/membar.h ../../include/synch.h \
+ includelinks/machine/membar.h ../../include/synch.h opt-paging.h \
  ../../include/spinlock.h ../../include/hangman.h opt-hangman.h \
  includelinks/machine/spinlock.h includelinks/platform/bus.h \
  includelinks/machine/vm.h ../../dev/lamebus/lamebus.h \

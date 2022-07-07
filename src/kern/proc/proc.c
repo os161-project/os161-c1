@@ -162,8 +162,9 @@ proc_create(const char *name)
 	proc->p_cwd = NULL;
 
 #if OPT_PAGING
-	proc->start_pt_i = -1;
-	proc->last_pt_i=-1;
+	proc->start_pt_i = 0;
+	proc->last_pt_i=0;
+	proc->n_frames = 0;
 #endif
 
 	proc_init_waitpid(proc,name);

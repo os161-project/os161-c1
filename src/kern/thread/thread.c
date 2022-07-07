@@ -660,14 +660,6 @@ thread_switch(threadstate_t newstate, struct wchan *wc, struct spinlock *lk)
 	curcpu->c_curthread = next;
 	curthread = next;
 
-	//ADDED for project
-#if OPT_PAGING
-	if(cur->t_proc->p_pid != next->t_proc->p_pid){
-		TLB_Invalidate_all();
-	}
-#endif
-
-
 	/* do the switch (in assembler in switch.S) */
 	switchframe_switch(&cur->t_context, &next->t_context);
 

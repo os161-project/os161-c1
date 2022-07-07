@@ -16,6 +16,7 @@
         "mainbus.h": "c",
         "current.h": "c",
         "cpu.h": "c",
-        "swapfile.h": "c"
+        "swapfile.h": "c",
+        "vm_tlb.h": "c"
     }
 }

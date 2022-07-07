@@ -7,4 +7,5 @@ copyinout.o: ../../vm/copyinout.c ../../include/types.h \
  ../../include/hangman.h opt-hangman.h includelinks/machine/spinlock.h \
  ../../include/threadlist.h includelinks/machine/thread.h \
  ../../include/current.h includelinks/machine/current.h \
- ../../include/vm.h includelinks/machine/vm.h ../../include/copyinout.h
+ ../../include/vm.h includelinks/machine/vm.h opt-paging.h \
+ ../../include/copyinout.h

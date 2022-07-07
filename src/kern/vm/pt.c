@@ -4,6 +4,8 @@
 #include <proc.h>
 #include <vm.h>
 #include <spl.h>
+#include <copyinout.h>
+//#include <mips/tlb.h>
 
 // V = validity bit
 // C = chain bit (if next field has a value)
@@ -26,6 +28,7 @@
 #define SET_CHAIN(x, value) (((x) &~ 0x00000002) | (value << 1))
 #define IS_KERNEL(x) ((x) & 0x00000004)
 #define SET_KERNEL(x, value) (((x) &~ 0x00000004) | (value << 2))
+#define IS_FULL(pt) (pt->first_free_frame == pt->last_free_frame && !IS_VALID(pt->entries[pt->first_free_frame].hi))
 
 struct PTE{
     uint32_t hi, low;
@@ -38,8 +41,7 @@ struct pT{
     //so we have a chain of free frame, first_free_frame is the index of the first free frame of the list
     //the next free frame is the one indexed by the next field in the low part
     uint32_t first_free_frame;
-    bool is_full;
-    uint32_t num_occupied_entries;
+    uint32_t last_free_frame;
     paddr_t mem_base_addr;
 };
 
@@ -49,10 +51,8 @@ page_table pageTInit(uint32_t n_pages){
     tmp->entries = kmalloc(n_pages * sizeof(*(tmp->entries)));
     tmp->mem_base_addr = ram_stealmem(0);
     tmp->size = n_pages;
-    tmp->first_free_frame=0;
-    tmp->is_full=false;
-    tmp->num_occupied_entries=0;
-    for(i = 0; i < n_pages-1; i++){
+    tmp->first_free_frame = 0;
+    for(i = 0; i < n_pages - 1; i++){
         //the chain of free frames is built here
         //when the ipt is initialized the list of free frames includes all the frames
         tmp->entries[i].hi = SET_KERNEL(SET_PN(SET_VALID(SET_CHAIN(tmp->entries[i].hi, 1), 0), 0), 0);
@@ -62,13 +62,12 @@ page_table pageTInit(uint32_t n_pages){
     //the last frame has the chain bit set to 0 (no chain) 
     tmp->entries[i].hi= SET_KERNEL(SET_PN(SET_VALID(SET_CHAIN(tmp->entries[i].hi,0),0),0),0);
     tmp->entries[i].low = SET_NEXT(SET_PID(tmp->entries[i].low, 0), 0);
+    tmp->last_free_frame = i;
     return tmp;
 }
 
 //Add a new entry into page table, set V, set next and chain bit to zero.
 void addEntry(page_table pt, uint32_t page_n, uint32_t index, uint32_t pid){
-    
-    
 
     if((page_n << 12) > MIPS_KSEG0){
         //set the frame as part of the kernel
@@ -80,12 +79,20 @@ void addEntry(page_table pt, uint32_t page_n, uint32_t index, uint32_t pid){
         pt->entries[index].low = SET_PID(SET_NEXT(pt->entries[index].low, 0),pid);
     }
 
-    pt->num_occupied_entries++;
-    if(pt->num_occupied_entries == pt->size)
-        pt->is_full=true;
+    if(curproc->n_frames == 0){
+        //we need to update also the head of the chain
+        curproc->start_pt_i = index;
+        curproc->last_pt_i = index;
+        curproc->n_frames++;
+        return;
+    }
+    //the penultimate frame of the chain is updated
+    //the chain is updated and the next field is updated indexing the last frame
+    pt->entries[curproc->last_pt_i].hi = SET_CHAIN(pt->entries[curproc->last_pt_i].hi, 1);
+    pt->entries[curproc->last_pt_i].low = SET_NEXT(pt->entries[curproc->last_pt_i].low, index);
+    curproc->n_frames++;
+    curproc->last_pt_i = index;
     
-    
-
     return;
 }
 
@@ -157,96 +164,36 @@ uint32_t replace_page(page_table pt){
     return page_index;
 }
 
- void add_to_chain(page_table pt, int last_pt_i){
-
-    
-    if(curproc->last_pt_i==-1){
-        //we need to update also the head of the chain
-        curproc->start_pt_i = last_pt_i;
-        curproc->last_pt_i = last_pt_i;
-        return;
-    }
-    //the penultimate frame of the chain is updated
-    //the chain is updated and the next field is updated indexing the last frame
-    pt->entries[curproc->last_pt_i].hi = SET_CHAIN(pt->entries[curproc->last_pt_i].hi, 1);
-    pt->entries[curproc->last_pt_i].low = SET_NEXT(pt->entries[curproc->last_pt_i].low, last_pt_i);
-
-    curproc->last_pt_i=last_pt_i;
-    
- }
-
-
 paddr_t pageIn(page_table pt, uint32_t pid, vaddr_t vaddr, swap_table ST) {
     int spl;
-    paddr_t paddr, page_index;
-    int chunk_index, free_chunk_index, free_frame_index;
+    paddr_t paddr;
+    int chunk_index;
 
     spl = splhigh();
-    
-    if(!pt->is_full){
-        free_frame_index = pt->first_free_frame;
-        //update the first free frame index
-        pt->first_free_frame = GET_NEXT(pt->entries[pt->first_free_frame].low);
-        //if the ipt is not full
-       // add an entry in the first free frame of the ipt
-        addEntry(pt, (vaddr & PAGE_FRAME) >> 12,  free_frame_index, curproc->p_pid);
-
-        //add the new entry to the chain of the process
-        add_to_chain(pt, free_frame_index);
-
-        paddr= free_frame_index * PAGE_SIZE + pt->mem_base_addr;
-        //load a frame in memory
-        chunk_index = getSwapChunk(ST, vaddr, pid); // add pid
-        if(chunk_index == -1){
-		    panic("Unavailable chunk in swap file!\nThis shouldn't happen...\n");
-	    }
-        swapin(ST, chunk_index, paddr, vaddr);
-        splx(spl);
-        return paddr; 
+    paddr = insert_page(pt, vaddr, ST, -1);
+    //load a frame in memory
+    chunk_index = getSwapChunk(ST, vaddr, pid);
+    if(chunk_index != -1){
+        swapin(ST, chunk_index, paddr);
+        //copyout((void*)PADDR_TO_KVADDR(paddr), (userptr_t)vaddr, PAGE_SIZE);
     }
 
-    //if we are here the ipt is full
-    page_index=replace_page(pt);
-
-    addEntry(pt, (vaddr & PAGE_FRAME), page_index, curproc->p_pid);
-
-    paddr= page_index * PAGE_SIZE + pt->mem_base_addr;
-
-    chunk_index = getSwapChunk(ST, vaddr, pid);
-	if(chunk_index == -1){
-		panic("Unavailable chunk in swap file!\nThis shouldn't happen...\n");
-	}
-
-    free_chunk_index = getFirstFreeChunckIndex(ST);
-	if(free_chunk_index == -1){
-		panic("Wait...is swap area full?!");
-	}
-
-	swapout(ST, free_chunk_index, paddr, (vaddr & PAGE_FRAME));
-	swapin(ST, chunk_index, paddr, vaddr);
     splx(spl);
-
     return paddr;
-
-    // TODO: Load the frame directly to the address space of the process
-
-    
-    // TODO: Set vpage number 
-    // Maybe we can call addEntry function and modify it
-    /*pt->entries[index].low = SET_PID(pt->entries[index].low, pid);
-    pt->entries[index].hi = SET_VALID(SET_CHAIN(pt->entries[index].hi, 0), 1);*/
 }
 
 void  all_proc_page_out(page_table pt){
+
     //invalidate all the pages of the process
-    
-     for(int i = curproc->start_pt_i; i != -1 && HAS_CHAIN(pt->entries[i].hi); i = GET_NEXT(pt->entries[i].low)){
+     for(int i = curproc->start_pt_i; i != -1; i = GET_NEXT(pt->entries[i].low)){
         pt->entries[i].hi = SET_VALID(pt->entries[i].hi,0);
+        if(!HAS_CHAIN(pt->entries[i].hi))
+            break;
     }
 }
 
 
-paddr_t alloc_n_contiguos_pages(uint32_t npages, pid_t pid, page_table pt){
+paddr_t alloc_n_contiguos_pages(uint32_t npages, page_table pt){
 	uint32_t i;
     int spl=splhigh();
 
@@ -308,10 +255,13 @@ paddr_t alloc_n_contiguos_pages(uint32_t npages, pid_t pid, page_table pt){
                     //if the page is valid i need to swap out
 
                     free_chunk_index= getFirstFreeChunckIndex(ST);
+                    if(free_chunk_index == -1){
+                        panic("Wait...is swap area full?!");
+                    }
                     splx(spl);
 
-                    swapout(ST, free_chunk_index, (i*PAGE_SIZE) + pt->mem_base_addr, GET_PN(pt->entries[i].hi));
-                    setInvalid(pt,i);
+                    swapout(ST, free_chunk_index, (i*PAGE_SIZE) + pt->mem_base_addr, GET_PN(pt->entries[i].hi), GET_PID(pt->entries[i].hi));
+                    remove_page(pt, i);
                 }
                 if(contiguous_pages >= npages){
                     break;
@@ -323,18 +273,85 @@ paddr_t alloc_n_contiguos_pages(uint32_t npages, pid_t pid, page_table pt){
 
     for(i=index; i< index+ npages; i++){
         //PADDR ??????
-        addEntry(pt, (PADDR_TO_KVADDR((i* PAGE_SIZE) + pt->mem_base_addr)) >> 12, i, pid);
+        insert_page(pt, (PADDR_TO_KVADDR((i* PAGE_SIZE) + pt->mem_base_addr)), ST, i);
     }
 
     splx(spl);
 
 
-    return (index * PAGE_SIZE) + pt->mem_base_addr;
+    return ((index * PAGE_SIZE) + pt->mem_base_addr) & PAGE_FRAME;
 	
 }
 
+paddr_t insert_page(page_table pt, vaddr_t vaddr, swap_table ST, int suggested_frame_n){
+
+    paddr_t frame_address;
+    uint32_t frame_n;
+
+    if(suggested_frame_n == -1){
+        if(IS_FULL(pt)){
+            frame_n = replace_page(pt);
+            frame_address = frame_n * PAGE_SIZE + pt->mem_base_addr;
+            int free_chunk_index = getFirstFreeChunckIndex(ST);
+            if(free_chunk_index == -1){
+                panic("Wait...is swap area full?!");
+            }
+            swapout(ST, free_chunk_index, frame_address, GET_PN(pt->entries[frame_n].hi), GET_PID(pt->entries[frame_n].hi));
+            remove_page(pt, frame_n);
+        }else{
+            frame_n = pt->first_free_frame;
+            frame_address =  frame_n * PAGE_SIZE + pt->mem_base_addr;
+            if(pt->first_free_frame != pt->last_free_frame){
+                //update the first free frame index
+                pt->first_free_frame = GET_NEXT(pt->entries[pt->first_free_frame].low);
+            }
+        }
+    }else{
+        frame_n = suggested_frame_n;
+        frame_address = frame_n * PAGE_SIZE + pt->mem_base_addr;
+    }
+    // add an entry in the first free frame of the ipt
+    addEntry(pt, (vaddr & PAGE_FRAME) >> 12,  frame_n, curproc->p_pid);
+
+    return frame_address;
+}
+
+void remove_page(page_table pt, uint32_t frame_n){
+    struct proc *p = proc_search_pid(GET_PID(pt->entries[frame_n].hi));
+    if(p != NULL){
+        if(p->n_frames != 1){
+            if(p->start_pt_i == frame_n){
+                p->start_pt_i = GET_NEXT(pt->entries[frame_n].low);
+            }else{
+                uint32_t i;
+                for(i = p->start_pt_i; HAS_CHAIN(pt->entries[i].hi) && GET_NEXT(pt->entries[i].low) != frame_n; i = GET_NEXT(pt->entries[i].low));
+                if(i == p->last_pt_i)
+                    panic("Are we trying to remove a frame which does not belong to the process it claims to belong to?\n");
+                if(frame_n == p->last_pt_i){
+                    p->last_pt_i = i;
+                    pt->entries[i].hi = SET_CHAIN(pt->entries[i].hi, 0);
+                }else{
+                    pt->entries[i].low = SET_NEXT(pt->entries[i].low, GET_NEXT(pt->entries[frame_n].low));
+                }
+            }
+        }else{
+            p->last_pt_i = p->start_pt_i;
+        }
+        p->n_frames--;
+    }
+    if(IS_FULL(pt)){
+        pt->first_free_frame = pt->last_free_frame = frame_n;
+    }else{
+        pt->entries[pt->last_free_frame].hi = SET_CHAIN(pt->entries[pt->last_free_frame].hi, 1);
+        pt->entries[pt->last_free_frame].low = SET_NEXT(pt->entries[pt->last_free_frame].low, frame_n);
+    }
+    pt->entries[frame_n].hi = SET_KERNEL(SET_PN(SET_VALID(SET_CHAIN(pt->entries[frame_n].hi, 0), 0), 0), 0);
+    pt->entries[frame_n].low = SET_NEXT(SET_PID(pt->entries[frame_n].low, 0), 0);
+}
+
 void print_pt(page_table pt){
-    for(uint32_t i = 0; i < 5; i++){
+    kprintf("\n");
+    for(uint32_t i = 0; i < 20; i++){
         kprintf("Hi: %x low: %x\n", pt->entries[i].hi, pt->entries[i].low);
     }
 }

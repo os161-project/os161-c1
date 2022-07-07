@@ -63,7 +63,7 @@ int is_code_segment(vaddr_t vaddr){
 	//get the last page number
 	uint32_t code_last_pn= as->as_vbase1 + (num_pages*PAGE_SIZE);
 
-	if(vaddr > code_first_pn && vaddr < code_last_pn )
+	if(vaddr >= code_first_pn && vaddr <= code_last_pn )
 		return 1; //it's a code segment
 	return 0;
 }

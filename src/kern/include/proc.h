@@ -78,8 +78,9 @@ struct proc {
         pid_t p_pid;                    /* process pid */
         struct cv *p_cv;
         struct lock *p_lock_cv;
-		int start_pt_i;
-		int last_pt_i;
+		uint32_t start_pt_i;
+		uint32_t last_pt_i;
+		uint32_t n_frames;
 #endif
 
 };

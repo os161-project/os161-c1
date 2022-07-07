@@ -30,11 +30,13 @@ void pageTFree(page_table pt);
 
 uint32_t replace_page(page_table pt);
 
-void add_to_chain(page_table pt, int last_pt_i);
-
 void all_proc_page_out(page_table pt);
 
-paddr_t alloc_n_contiguos_pages(uint32_t npages, pid_t p_pid, page_table pt);
+paddr_t alloc_n_contiguos_pages(uint32_t npages, page_table pt);
+
+paddr_t insert_page(page_table pt, vaddr_t vaddr, swap_table ST, int suggested_frame_n);
+
+void remove_page(page_table pt, uint32_t frame_n);
 
 void print_pt(page_table pt);
 

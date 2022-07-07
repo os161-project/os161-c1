@@ -6,8 +6,8 @@ menu.o: ../../main/menu.c ../../include/types.h \
  ../../include/cdefs.h opt-noasserts.h ../../include/uio.h \
  ../../include/kern/iovec.h ../../include/clock.h \
  ../../include/kern/time.h ../../include/mainbus.h ../../include/synch.h \
- ../../include/spinlock.h ../../include/hangman.h opt-hangman.h \
- includelinks/machine/spinlock.h ../../include/thread.h \
+ opt-paging.h ../../include/spinlock.h ../../include/hangman.h \
+ opt-hangman.h includelinks/machine/spinlock.h ../../include/thread.h \
  ../../include/array.h ../../include/threadlist.h \
  includelinks/machine/thread.h ../../include/setjmp.h \
  includelinks/kern/machine/setjmp.h ../../include/proc.h \

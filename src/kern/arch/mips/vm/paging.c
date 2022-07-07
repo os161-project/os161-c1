@@ -43,6 +43,7 @@
 #include <types.h>
 #include <mainbus.h>
 #include "vm_tlb.h"
+#include <syscall.h>
 
 /* under dumbvm, always have 72k of user stack */
 /* (this must be > 64K so argument blocks of size ARG_MAX will fit) */
@@ -95,7 +96,7 @@ alloc_kpages(unsigned npages)
 	paddr_t pa;
 	if(vm_enabled) {
 		//alloc n contiguous pages
-		pa= alloc_n_contiguos_pages(npages, curproc->p_pid, IPT);
+		pa= alloc_n_contiguos_pages(npages, IPT);
 	}else{
 		pa = getppages(npages);
 		if (pa==0) {
@@ -109,14 +110,17 @@ alloc_kpages(unsigned npages)
 void
 free_kpages(vaddr_t addr)
 {
+	int paddr;
 	/* nothing - leak the memory. */
 	if(vm_enabled) {
 		//spinlock_acquire(&vm_lock);
 		// Do something ...
 		//spinlock_release(&vm_lock);
+		paddr = getFrameAddress(IPT, addr >> 12);
+		if(paddr != -1){
+			setInvalid(IPT, paddr >> 12);
+		}
 	}
-	
-	(void)addr;
 }
 
 void
@@ -143,11 +147,13 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	    case VM_FAULT_READONLY:
 			//try to access a read-only segment causes a fault, terminate the process
 			//TO-DO: terminate the process
+			sys__exit(0);
 			break;
 	    case VM_FAULT_READ:
 			
 			break;
 	    case VM_FAULT_WRITE:
+		
 		break;
 	    default:
 		return EINVAL;
@@ -211,7 +217,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	/* Disable interrupts on this CPU while frobbing the TLB. */
 	spl = splhigh();
 	//spinlock_acquire(&vm_lock);
-	if(faultaddress <=MIPS_KSEG0){
+	if(faultaddress <= MIPS_KSEG0){
 
 		//retrieve the frame number in the page table
 		paddr = getFrameAddress(IPT,(faultaddress & PAGE_FRAME) >> 12);
@@ -220,10 +226,9 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 			//TO_DO: handle page fault
 			paddr = pageIn(IPT, curproc->p_pid, faultaddress, ST);
 		}
-		//add to tlb
 		paddr = paddr & PAGE_FRAME;
-		
 		TLB_Insert(faultaddress,paddr);
+		//add to tlb
 		splx(spl);
 		//spinlock_release(&vm_lock);
 		return 0;
