@@ -51,6 +51,7 @@
 
 #if OPT_PAGING
 #include <synch.h>
+#include <syscall.h>
 
 #define MAX_PROC 100
 static struct _processTable {
@@ -169,7 +170,9 @@ proc_create(const char *name)
 #endif
 
 	proc_init_waitpid(proc,name);
-
+#if OPT_PAGING
+	bzero(proc->fileTable,OPEN_MAX*sizeof(struct openfile *));
+#endif
 	return proc;
 }
 
@@ -360,12 +363,11 @@ proc_remthread(struct thread *t)
 	int spl;
 
 	proc = t->t_proc;
-	if(proc != NULL){
-		spinlock_acquire(&proc->p_lock);
-		KASSERT(proc->p_numthreads > 0);
-		proc->p_numthreads--;
-		spinlock_release(&proc->p_lock);
-	}
+	KASSERT(proc != NULL);
+	spinlock_acquire(&proc->p_lock);
+	KASSERT(proc->p_numthreads > 0);
+	proc->p_numthreads--;
+	spinlock_release(&proc->p_lock);
 	spl = splhigh();
 	t->t_proc = NULL;
 	splx(spl);
@@ -435,4 +437,30 @@ int  proc_wait(struct proc *proc)
         return 0;
 #endif
 }
+
+void
+proc_signal_end(struct proc *proc)
+{
+#if OPT_PAGING
+      lock_acquire(proc->p_lock_cv);
+      cv_signal(proc->p_cv, proc->p_lock_cv);
+      lock_release(proc->p_lock_cv);
+#endif
+}
+
+void 
+proc_file_table_copy(struct proc *psrc, struct proc *pdest) {
+#if OPT_PAGING
+  int fd;
+  for (fd=0; fd < OPEN_MAX; fd++) {
+    struct openfile *of = psrc->fileTable[fd];
+    pdest->fileTable[fd] = of;
+    if (of != NULL) {
+      /* incr reference count */
+      openfileIncrRefCount(of);
+    }
+  }
+#endif
+}
+
 

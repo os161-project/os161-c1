@@ -38,6 +38,9 @@
 
 #include "opt-paging.h"
 #include <spinlock.h>
+#if OPT_PAGING
+#include <limits.h>
+#endif
 
 struct addrspace;
 struct thread;
@@ -82,6 +85,7 @@ struct proc {
 		uint32_t last_pt_i;				/*Page table index representing frames list tail*/
 		uint32_t n_frames;				/*Number of frames owned by the process*/
 		uint32_t n_contiguous_kernel_pages;
+		struct openfile *fileTable[OPEN_MAX];
 #endif
 
 };
@@ -114,5 +118,9 @@ struct addrspace *proc_setas(struct addrspace *);
 int proc_wait(struct proc *proc);
 /* get proc from pid */
 struct proc *proc_search_pid(pid_t pid);
+
+void proc_signal_end(struct proc *proc);
+
+void proc_file_table_copy(struct proc *psrc, struct proc *pdest);
 
 #endif /* _PROC_H_ */
