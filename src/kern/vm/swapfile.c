@@ -175,7 +175,27 @@ void all_proc_chunk_out(swap_table st){
 
 void print_chunks(swap_table st){
     kprintf("\n");
-    for(uint32_t i = 0; i < st->size; i++){
+    for(uint32_t i = 0; i < 295; i++){
         kprintf("%d) : %x SWAPPED: %d\n", i, st->entries[i], IS_SWAPPED(st->entries[i]));
     }
+}
+
+void checkDuplicatedEntries(swap_table st){
+    uint32_t i, j, first_pn, first_pid, second_pn, second_pid;
+    for(i = 0; i < st->size; i++){
+        first_pn = GET_PN(st->entries[i]);
+        first_pid = GET_PID(st->entries[i]);
+        for(j = 0; j < st->size; j++){
+            if(i != j){
+                second_pn = GET_PN(st->entries[j]);
+                second_pid = GET_PID(st->entries[j]);
+                if(first_pn == second_pn && first_pid == second_pid){
+                    kprintf("\nDuplicated entries!\nFirst at %d: 0x%x\nSecond at %d: 0x%x\n", i, st->entries[i], j, st->entries[j]);
+                    return;
+                }
+            }
+        }
+    }
+    kprintf("\nNo duplicated entries!\n");
+    return;
 }

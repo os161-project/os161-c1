@@ -146,7 +146,6 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	switch (faulttype) {
 	    case VM_FAULT_READONLY:
 			//try to access a read-only segment causes a fault, terminate the process
-			//TO-DO: terminate the process
 			sys__exit(0);
 			break;
 	    case VM_FAULT_READ:

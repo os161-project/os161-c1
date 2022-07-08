@@ -26,4 +26,6 @@ void all_proc_chunk_out(swap_table st);
 
 void print_chunks(swap_table st);
 
+void checkDuplicatedEntries(swap_table st);
+
 #endif

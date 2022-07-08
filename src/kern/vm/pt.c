@@ -169,15 +169,11 @@ uint32_t replace_page(page_table pt){
     int spl = splhigh(); // TODO: Check if this splhigh is needed or not
     uint32_t page_index;
 
-    /*
     do{
         page_index = random() % pt->size;
     }while(IS_KERNEL(pt->entries[page_index].hi));
-    */
-
+    
     splx(spl);
-    page_index = 37;
-    (void)pt;
     return page_index;
 }
 
@@ -192,7 +188,6 @@ paddr_t pageIn(page_table pt, uint32_t pid, vaddr_t vaddr, swap_table ST) {
     chunk_index = getSwapChunk(ST, vaddr, pid);
     if(chunk_index != -1){
         swapin(ST, chunk_index, paddr);
-        //copyout((void*)PADDR_TO_KVADDR(paddr), (userptr_t)vaddr, PAGE_SIZE);
     }
 
     splx(spl);
@@ -280,7 +275,7 @@ paddr_t alloc_n_contiguos_pages(uint32_t npages, page_table pt){
                     }
                     splx(spl);
 
-                    swapout(ST, free_chunk_index, (i*PAGE_SIZE) + pt->mem_base_addr, GET_PN(pt->entries[i].hi), GET_PID(pt->entries[i].hi));
+                    swapout(ST, free_chunk_index, (i*PAGE_SIZE) + pt->mem_base_addr, GET_PN(pt->entries[i].hi), GET_PID(pt->entries[i].low));
                     remove_page(pt, i);
                 }
                 if(contiguous_pages >= npages){
@@ -310,14 +305,14 @@ paddr_t insert_page(page_table pt, vaddr_t vaddr, swap_table ST, int suggested_f
 
     if(suggested_frame_n == -1){
         if(IS_FULL(pt)){
+            int free_chunk_index;
             frame_n = replace_page(pt);
             frame_address = frame_n * PAGE_SIZE + pt->mem_base_addr;
-            int free_chunk_index = getFirstFreeChunckIndex(ST);
+            free_chunk_index = getFirstFreeChunckIndex(ST);
             if(free_chunk_index == -1){
-                //print_chunks(ST);
-                panic("Wait...is swap area full?!");
+                panic("Wait...is swap area full?!\n");
             }
-            swapout(ST, free_chunk_index, frame_address, GET_PN(pt->entries[frame_n].hi), GET_PID(pt->entries[frame_n].hi));
+            swapout(ST, free_chunk_index, frame_address, GET_PN(pt->entries[frame_n].hi), GET_PID(pt->entries[frame_n].low));
             remove_page(pt, frame_n);
         }else{
             frame_n = pt->first_free_frame;
