@@ -175,7 +175,7 @@ void all_proc_chunk_out(swap_table st){
 
 void print_chunks(swap_table st){
     kprintf("\n");
-    for(uint32_t i = 0; i < 5; i++){
-        kprintf("Chunk %d : %x\n", i, st->entries[i]);
+    for(uint32_t i = 0; i < st->size; i++){
+        kprintf("%d) : %x SWAPPED: %d\n", i, st->entries[i], IS_SWAPPED(st->entries[i]));
     }
 }
