@@ -67,8 +67,6 @@ int vm_enabled;
 swap_table ST;
 page_table IPT;
 //struct spinlock vm_lock;
-
-uint32_t handle_page_fault(vaddr_t faultaddress);
 #endif
 
 

@@ -12,7 +12,7 @@ page_table pageTInit(uint32_t n_pages);
 void addEntry(page_table pt, uint32_t page_n, uint32_t index, uint32_t pid);
 
 // Return the index (frame number) where page number is stored in, if page is not stored in memory, return -1
-int getFrameAddress(page_table pt, uint32_t page_n);
+int getFrameAddress(page_table pt, uint32_t page_n, bool frame);
 
 // Return the page number for a given page table entry (corresponding to the given index)
 uint32_t getPageN(page_table pt, uint32_t index);

@@ -112,14 +112,16 @@ void addEntry(page_table pt, uint32_t page_n, uint32_t index, uint32_t pid){
 }
 
 //Return the index where page number is stored in, if page is not stored in memory, return -1
-int getFrameAddress(page_table pt, uint32_t page_n){
+int getFrameAddress(page_table pt, uint32_t page_n, bool frame){
     //KASSERT(GET_PID(pt->entries[curproc->start_pt_i].low) == curproc->p_pid);
     uint32_t frame_n = -1;
     
     for(int i = curproc->start_pt_i; i != -1; i = GET_NEXT(pt->entries[i].low)){
         if(GET_PN(pt->entries[i].hi) == page_n){
-            frame_n = i;
-            frame_n = frame_n * PAGE_SIZE + pt->mem_base_addr;
+            if(frame)
+                frame_n = i;
+            else
+                frame_n = i * PAGE_SIZE + pt->mem_base_addr;
             break;
         }
         if(!HAS_CHAIN(pt->entries[i].hi))
@@ -291,6 +293,7 @@ paddr_t alloc_n_contiguos_pages(uint32_t npages, page_table pt){
         insert_page(pt, (PADDR_TO_KVADDR((i* PAGE_SIZE) + pt->mem_base_addr)), ST, i);
     }
 
+    curproc->n_contiguous_kernel_pages = npages;
     splx(spl);
 
 

@@ -96,7 +96,7 @@ alloc_kpages(unsigned npages)
 	paddr_t pa;
 	if(vm_enabled) {
 		//alloc n contiguous pages
-		pa= alloc_n_contiguos_pages(npages, IPT);
+		pa = alloc_n_contiguos_pages(npages, IPT);
 	}else{
 		pa = getppages(npages);
 		if (pa==0) {
@@ -110,15 +110,21 @@ alloc_kpages(unsigned npages)
 void
 free_kpages(vaddr_t addr)
 {
-	int paddr;
+	int frame_n;
 	/* nothing - leak the memory. */
 	if(vm_enabled) {
 		//spinlock_acquire(&vm_lock);
 		// Do something ...
 		//spinlock_release(&vm_lock);
-		paddr = getFrameAddress(IPT, addr >> 12);
-		if(paddr != -1){
-			setInvalid(IPT, paddr >> 12);
+		while(curproc->n_contiguous_kernel_pages > 0){
+			frame_n = getFrameAddress(IPT, addr >> 12, true);
+			if(frame_n != -1){
+				KASSERT(getPID(IPT, frame_n) == (uint32_t)curproc->p_pid);
+				remove_page(IPT, frame_n);
+			}else{
+				panic("Where is that frame?!\n");
+			}
+			curproc->n_contiguous_kernel_pages--;
 		}
 	}
 }
@@ -219,7 +225,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	if(faultaddress <= MIPS_KSEG0){
 
 		//retrieve the frame number in the page table
-		paddr = getFrameAddress(IPT,(faultaddress & PAGE_FRAME) >> 12);
+		paddr = getFrameAddress(IPT,(faultaddress & PAGE_FRAME) >> 12, false);
 		if(paddr==-1){
 			//PAGE FAULT
 			//TO_DO: handle page fault
