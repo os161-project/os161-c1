@@ -5,6 +5,7 @@
 #include <vm.h>
 #include <spl.h>
 #include <copyinout.h>
+#include <vmstats.h>
 
 // V = validity bit
 // C = chain bit (if next field has a value)
@@ -188,9 +189,11 @@ paddr_t pageIn(page_table pt, uint32_t pid, vaddr_t vaddr, swap_table ST) {
     //load a frame in memory
     chunk_index = getSwapChunk(ST, vaddr, pid);
     if(chunk_index != -1){
+        /* Getting the new page from the swap file */
         swapin(ST, chunk_index, paddr);
+        /* statistics */ add_VM_pageFault(VM_SWAP);
     }
-
+    /* statistics */ add_VM_pageFault(VM_ZEROED);
     splx(spl);
     return paddr;
 }

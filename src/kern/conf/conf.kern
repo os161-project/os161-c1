@@ -347,6 +347,7 @@ defoption paging
 optfile         paging       vm/swapfile.c
 optfile         paging       vm/pt.c
 optfile         paging       vm/vm_tlb.c
+optfile         paging       vm/vmstats.c
 optfile         paging       syscall/file_syscalls.c
 optfile         paging       syscall/proc_syscalls.c
 optfile         paging       vm/addrspace.c

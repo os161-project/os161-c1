@@ -44,6 +44,7 @@
 #include <mainbus.h>
 #include "vm_tlb.h"
 #include <syscall.h>
+#include <vmstats.h>
 
 /* under dumbvm, always have 72k of user stack */
 /* (this must be > 64K so argument blocks of size ARG_MAX will fit) */
@@ -73,6 +74,8 @@ vm_bootstrap(void)
 	// in this way we don't keep track of the page where the IPT and ST are stored
 	IPT = pageTInit((ram_size-ram_user_base-PAGE_SIZE)/PAGE_SIZE);
 	vm_enabled = 1;
+	/* Now we can start keeping track of VM stats */
+	stat_bootstrap();
 }
 
 static
@@ -134,6 +137,12 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
 {
 	(void)ts;
 	panic("dumbvm tried to do tlb shootdown?!\n");
+}
+
+void
+vm_shutdown(void) 
+{
+	print_stats();
 }
 
 int
@@ -222,14 +231,17 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	/* Disable interrupts on this CPU while frobbing the TLB. */
 	spl = splhigh();
 	//spinlock_acquire(&vm_lock);
-	if(faultaddress <= MIPS_KSEG0){
-
+	if(faultaddress <= MIPS_KSEG0) {
+		/* statistics */ add_TLB_fault();
 		//retrieve the frame number in the page table
 		paddr = getFrameAddress(IPT,(faultaddress & PAGE_FRAME) >> 12, false);
 		if(paddr==-1){
 			//PAGE FAULT
-			//TO_DO: handle page fault
+			/* Page was not already in memory, we need to handle page fault */
 			paddr = pageIn(IPT, curproc->p_pid, faultaddress, ST);
+		} else {
+			/* Page is already in memory, we just need to reload the entry in the TLB */
+			/* statistics */ add_TLB_reload();
 		}
 		paddr = paddr & PAGE_FRAME;
 		TLB_Insert(faultaddress,paddr);

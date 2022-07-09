@@ -48,7 +48,6 @@
 #define VM_FAULT_WRITE       1    /* A write was attempted */
 #define VM_FAULT_READONLY    2    /* A write to a readonly page was attempted*/
 
-
 /* Initialization function */
 void vm_bootstrap(void);
 
@@ -67,6 +66,8 @@ int vm_enabled;
 swap_table ST;
 page_table IPT;
 //struct spinlock vm_lock;
+/* Printing VM statistics when shooting down the VM system */
+void vm_shutdown(void); 
 #endif
 
 

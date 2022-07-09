@@ -352,7 +352,6 @@ cmd_quit(int nargs, char **args)
 {
 	(void)nargs;
 	(void)args;
-
 	vfs_sync();
 	sys_reboot(RB_POWEROFF);
 	thread_exit();
