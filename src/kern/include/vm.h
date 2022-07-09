@@ -63,10 +63,22 @@ void free_kpages(vaddr_t addr);
 void vm_tlbshootdown(const struct tlbshootdown *);
 
 #if OPT_PAGING
+#define MAX_PROCESSES 64
+
+typedef struct{
+    vaddr_t vaddr_to_free;
+    uint32_t start_frame_n_to_remove, n_pages;
+    pid_t owner;
+    int next, prev;
+}kernel_frame;
+
 int vm_enabled;
 swap_table ST;
 page_table IPT;
-//struct spinlock vm_lock;
+struct spinlock vm_lock;
+struct spinlock k_lock;
+kernel_frame *k_frames;
+int start_index_k, start_free_index;
 #endif
 
 

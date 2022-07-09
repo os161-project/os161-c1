@@ -92,7 +92,6 @@ int sys_fork(struct trapframe *ctf, pid_t *retval) {
   struct trapframe *tf_child;
   struct proc *newp;
   int result;
-
   KASSERT(curproc != NULL);
 
   newp = proc_create_runprogram(curproc->p_name);
@@ -120,7 +119,6 @@ int sys_fork(struct trapframe *ctf, pid_t *retval) {
 
   /* TO BE DONE: linking parent/child, so that child terminated 
      on parent exit */
-
   result = thread_fork(
 		 curthread->t_name, newp,
 		 call_enter_forked_process, 

@@ -1,15 +1,12 @@
 #include "vm_tlb.h"
 #include <mips/tlb.h>
-#include <spl.h>
 #include <addrspace.h>
 #include <proc.h>
 
 int TLB_Insert(vaddr_t faultaddress, paddr_t paddr){
-	int i,spl;
 	uint32_t hi,lo;
-
+	int i;
 	//disable interrupt
-	spl=splhigh();
 
 	int is_code_seg= is_code_segment(faultaddress);
 
@@ -27,7 +24,6 @@ int TLB_Insert(vaddr_t faultaddress, paddr_t paddr){
 			}
 			tlb_write(hi,lo,i);
 			//enable interrupt
-			splx(spl);
 			return 0;
 		}
 	}
@@ -40,7 +36,6 @@ int TLB_Insert(vaddr_t faultaddress, paddr_t paddr){
 	lo=paddr | TLBLO_DIRTY | TLBLO_VALID;
 	tlb_write(hi,lo,victim);
 
-    splx(spl);
     return 0;
 }
 
@@ -71,14 +66,9 @@ int is_code_segment(vaddr_t vaddr){
 int TLB_Invalidate_all(void){
 	// Code to invalidate here
 	int i;
-	int spl;
-
-	spl = splhigh();
-
 	for (i=0; i<NUM_TLB; i++) {
 		tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
 	}
-	splx(spl);
     return 0;
 }
 
