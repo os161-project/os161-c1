@@ -17,6 +17,8 @@
         "current.h": "c",
         "cpu.h": "c",
         "swapfile.h": "c",
-        "vm_tlb.h": "c"
+        "vm_tlb.h": "c",
+        "cdefs.h": "c",
+        "vmstats.h": "c"
     }
 }

@@ -2,6 +2,7 @@
 #include <mips/tlb.h>
 #include <addrspace.h>
 #include <proc.h>
+#include <vmstats.h>
 
 int TLB_Insert(vaddr_t faultaddress, paddr_t paddr){
 	uint32_t hi,lo;
@@ -22,6 +23,7 @@ int TLB_Insert(vaddr_t faultaddress, paddr_t paddr){
 			}else{
 				lo=paddr | TLBLO_DIRTY | TLBLO_VALID;
 			}
+			/* statistics */ add_TLB_fault_type(TLB_FREE);
 			tlb_write(hi,lo,i);
 			//enable interrupt
 			return 0;
@@ -31,6 +33,7 @@ int TLB_Insert(vaddr_t faultaddress, paddr_t paddr){
 	//if we are here we need to use a replacement algorithm (TLB full)
 	//choose the victim
 	int victim=tlb_get_rr_victim();
+	/* statistics */ add_TLB_fault_type(TLB_REPLACE);
 	//write in the tlb at index = victim
 	hi=faultaddress;
 	lo=paddr | TLBLO_DIRTY | TLBLO_VALID;
@@ -66,6 +69,7 @@ int is_code_segment(vaddr_t vaddr){
 int TLB_Invalidate_all(void){
 	// Code to invalidate here
 	int i;
+	/* statistics */ add_TLB_invalidation();
 	for (i=0; i<NUM_TLB; i++) {
 		tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
 	}
