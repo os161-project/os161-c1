@@ -43,7 +43,7 @@ swap_table swapTableInit(char swap_file_name[]){
     return result;
 }
 
-void swapout(swap_table st, uint32_t index, paddr_t paddr, uint32_t page_number, uint32_t pid){
+void swapout(swap_table st, uint32_t index, paddr_t paddr, uint32_t page_number, uint32_t pid, bool invalidate){
     int spl=splhigh();
     struct uio swap_uio;
     struct iovec iov;
@@ -58,7 +58,8 @@ void swapout(swap_table st, uint32_t index, paddr_t paddr, uint32_t page_number,
     if(result)     
         panic("VM_SWAP_OUT: Failed");
     spl=splhigh();
-    TLB_Invalidate(paddr);
+    if(invalidate)
+        TLB_Invalidate(paddr);
     splx(spl);
 }
 
@@ -170,6 +171,38 @@ void all_proc_chunk_out(swap_table st){
     for(uint32_t i = 0; i < st->size; i++){
         if(GET_PID(st->entries[i]) == (uint32_t)curproc->p_pid)
             st->entries[i] = SET_SWAPPED(st->entries[i], 1);
+    }
+}
+
+void chunks_fork(swap_table st, pid_t src_pid, pid_t dst_pid){
+    uint32_t i, j;
+    int free_chunk, result;
+    char buffer[PAGE_SIZE / 2];
+    struct uio swap_uio;
+    struct iovec iov;
+    uint32_t incr = PAGE_SIZE / 2, offset_src, offset_dst;
+    for(i = 0; i < st->size; i++){
+        if(GET_PID(st->entries[i]) == (uint32_t)src_pid && !IS_SWAPPED(st->entries[i])){
+            free_chunk = getFirstFreeChunckIndex(st);
+            if(free_chunk == -1)
+                panic("Wait...is swap area full?!\n");
+            offset_src = i * PAGE_SIZE;
+            offset_dst = free_chunk * PAGE_SIZE;
+            for(j = 0; j < 2; j++, offset_src += incr, offset_dst += incr){
+                //Reading from parent process chunk
+                uio_kinit(&iov, &swap_uio, buffer, incr, offset_src, UIO_READ);
+                result = VOP_READ(st->fp, &swap_uio);
+                if(result) 
+                    panic("Failed forking chunks!\n");
+                
+                //Writing new chunk for child process
+                uio_kinit(&iov, &swap_uio, buffer, incr, offset_dst, UIO_WRITE);
+                result = VOP_WRITE(st->fp, &swap_uio);
+                if(result) 
+                    panic("Failed forking chunks!\n");
+            }
+            st->entries[free_chunk] = SET_PN(SET_PID(SET_SWAPPED(st->entries[free_chunk], 0), dst_pid), GET_PN(st->entries[i]));
+        }
     }
 }
 

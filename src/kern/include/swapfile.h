@@ -12,7 +12,7 @@ swap_table swapTableInit(char swap_file_name[]);
 
 swap_table getSwapTable();
 
-void swapout(swap_table st, uint32_t index, paddr_t paddr, uint32_t page_number, uint32_t pid);
+void swapout(swap_table st, uint32_t index, paddr_t paddr, uint32_t page_number, uint32_t pid, bool invalidate);
 
 void swapin(swap_table st, uint32_t index, paddr_t paddr);
 
@@ -23,6 +23,8 @@ void elf_to_swap(swap_table st, struct vnode *v, off_t offset, uint32_t init_pag
 int getSwapChunk(swap_table st, vaddr_t faultaddress, pid_t pid);
 
 void all_proc_chunk_out(swap_table st);
+
+void chunks_fork(swap_table st, pid_t src_pid, pid_t dst_pid);
 
 void print_chunks(swap_table st);
 

@@ -238,6 +238,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		//spinlock_release(&vm_lock);
 		return 0;
 	}
+	splx(spl);
 	//spinlock_release(&vm_lock);
 	return EFAULT;
 }

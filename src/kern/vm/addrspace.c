@@ -36,6 +36,7 @@
 #include <opt-paging.h>
 #if OPT_PAGING
 #include <vm_tlb.h>
+#include <current.h>
 #endif
 
 /*
@@ -67,6 +68,28 @@ as_create(void)
 	return as;
 }
 
+#if OPT_PAGING
+int as_copy(struct addrspace *src, struct addrspace **ret, pid_t new_pid){
+	
+	struct addrspace *newas;
+
+	newas = as_create();
+	if (newas==NULL) {
+		return ENOMEM;
+	}
+
+	newas->as_vbase1 = src->as_vbase1;
+	newas->as_npages1 = src->as_npages1;
+	newas->as_vbase2 = src->as_vbase2;
+	newas->as_npages2 = src->as_npages2;
+
+	chunks_fork(ST, curproc->p_pid, new_pid);
+	pages_fork(IPT, curproc->start_pt_i, new_pid);
+	*ret = newas;
+	return 0;
+
+}
+#else
 int
 as_copy(struct addrspace *old, struct addrspace **ret)
 {
@@ -82,11 +105,10 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 	 */
 
 	(void)old;
-
 	*ret = newas;
 	return 0;
 }
-
+#endif
 void
 as_destroy(struct addrspace *as)
 {
@@ -160,7 +182,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	(void)readable;
 	(void)writeable;
 	(void)executable;
-
+#if OPT_PAGING
 	if (as->as_vbase1 == 0) {
 		as->as_vbase1 = vaddr;
 		as->as_npages1 = npages;
@@ -172,7 +194,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 		as->as_npages2 = npages;
 		return 0;
 	}
-
+#endif
 	return ENOSYS;
 }
 

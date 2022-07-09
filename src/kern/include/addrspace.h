@@ -113,7 +113,11 @@ struct addrspace {
  */
 
 struct addrspace *as_create(void);
+#if OPT_DUMBVM
 int               as_copy(struct addrspace *src, struct addrspace **ret);
+#else
+int               as_copy(struct addrspace *src, struct addrspace **ret, pid_t new_pid);
+#endif
 void              as_activate(void);
 void              as_deactivate(void);
 void              as_destroy(struct addrspace *);

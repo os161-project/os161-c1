@@ -36,6 +36,9 @@
 #include <thread.h>
 #include <current.h>
 #include <syscall.h>
+#if OPT_PAGING
+#include <addrspace.h>
+#endif
 
 
 /*
@@ -209,5 +212,21 @@ syscall(struct trapframe *tf)
 void
 enter_forked_process(struct trapframe *tf)
 {
+#if OPT_PAGING
+	// Duplicate frame so it's on stack
+	struct trapframe forkedTf = *tf; // copy trap frame onto kernel stack
+
+	kfree(tf); /* work done. now can be freed */
+
+	forkedTf.tf_v0 = 0; // return value is 0
+        forkedTf.tf_a3 = 0; // return with success
+
+	forkedTf.tf_epc += 4; // return to next instruction
+	
+	as_activate();
+
+	mips_usermode(&forkedTf);
+#else
 	(void)tf;
+#endif
 }

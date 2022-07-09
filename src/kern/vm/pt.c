@@ -5,7 +5,6 @@
 #include <vm.h>
 #include <spl.h>
 #include <copyinout.h>
-//#include <mips/tlb.h>
 
 // V = validity bit
 // C = chain bit (if next field has a value)
@@ -243,13 +242,13 @@ paddr_t alloc_n_contiguos_pages(uint32_t npages, page_table pt){
         if(!IS_VALID(pt->entries[i].hi)){
             index=i;
             count=0;
+            count++;
         }else{
             //this page is not valid, check if we have found n contiguous free pages
             if(count >=npages){
                 break;
             }
         }
-        count++;
 		
 	}
 
@@ -277,7 +276,7 @@ paddr_t alloc_n_contiguos_pages(uint32_t npages, page_table pt){
                     }
                     splx(spl);
 
-                    swapout(ST, free_chunk_index, (i*PAGE_SIZE) + pt->mem_base_addr, GET_PN(pt->entries[i].hi), GET_PID(pt->entries[i].low));
+                    swapout(ST, free_chunk_index, (i*PAGE_SIZE) + pt->mem_base_addr, GET_PN(pt->entries[i].hi), GET_PID(pt->entries[i].low), true);
                     remove_page(pt, i);
                 }
                 if(contiguous_pages >= npages){
@@ -289,7 +288,6 @@ paddr_t alloc_n_contiguos_pages(uint32_t npages, page_table pt){
     }
 
     for(i=index; i< index+ npages; i++){
-        //PADDR ??????
         insert_page(pt, (PADDR_TO_KVADDR((i* PAGE_SIZE) + pt->mem_base_addr)), ST, i);
     }
 
@@ -315,7 +313,7 @@ paddr_t insert_page(page_table pt, vaddr_t vaddr, swap_table ST, int suggested_f
             if(free_chunk_index == -1){
                 panic("Wait...is swap area full?!\n");
             }
-            swapout(ST, free_chunk_index, frame_address, GET_PN(pt->entries[frame_n].hi), GET_PID(pt->entries[frame_n].low));
+            swapout(ST, free_chunk_index, frame_address, GET_PN(pt->entries[frame_n].hi), GET_PID(pt->entries[frame_n].low), true);
             remove_page(pt, frame_n);
         }else{
             frame_n = pt->first_free_frame;
@@ -365,10 +363,27 @@ void remove_page(page_table pt, uint32_t frame_n){
     pt->entries[frame_n].low = SET_NEXT(SET_PID(pt->entries[frame_n].low, 0), 0);
 }
 
+void pages_fork(page_table pt, uint32_t start_src_frame, pid_t dst_pid){
+    uint32_t i;
+    int free_chunk_index;
+    uint32_t frame_address;
+    for(i = start_src_frame; ; i = GET_NEXT(pt->entries[i].low)){
+            free_chunk_index = getFirstFreeChunckIndex(ST);
+            if(free_chunk_index == -1){
+                panic("Wait...is swap area full?!\n");
+            }
+            frame_address = i * PAGE_SIZE + pt->mem_base_addr;
+            swapout(ST, free_chunk_index, frame_address, GET_PN(pt->entries[i].hi), dst_pid, false);
+        if(!HAS_CHAIN(pt->entries[i].hi))
+            break;
+    }
+
+}
+
 void print_pt(page_table pt){
     kprintf("\n");
     for(uint32_t i = 0; i < pt->size; i++){
-        kprintf("%d) Hi: %x low: %x next: %d PID: %d PN: %d\n", i, pt->entries[i].hi, pt->entries[i].low, GET_NEXT(pt->entries[i].low), GET_PID(pt->entries[i].low), GET_PN(pt->entries[i].hi));
+        kprintf("%2d) Hi: %8x low: %8x next: %2d PID: %2d PN: %8d CHAIN: %1d\n", i, pt->entries[i].hi, pt->entries[i].low, GET_NEXT(pt->entries[i].low), GET_PID(pt->entries[i].low), GET_PN(pt->entries[i].hi), HAS_CHAIN(pt->entries[i].hi));
     }
     kprintf("\nFirst free frame: %d\nLast free frame: %d\n",pt->first_free_frame, pt->last_free_frame);
     kprintf("Current process first page index: %d\nCurrent process last page index: %d\n", curproc->start_pt_i, curproc->last_pt_i);

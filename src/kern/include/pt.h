@@ -38,6 +38,8 @@ paddr_t insert_page(page_table pt, vaddr_t vaddr, swap_table ST, int suggested_f
 
 void remove_page(page_table pt, uint32_t frame_n);
 
+void pages_fork(page_table pt, uint32_t start_src_frame, pid_t dst_pid);
+
 void print_pt(page_table pt);
 
 #endif
