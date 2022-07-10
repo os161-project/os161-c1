@@ -2,7 +2,10 @@
 #include <mips/tlb.h>
 #include <addrspace.h>
 #include <proc.h>
+#include <current.h>
 #include <vmstats.h>
+
+pid_t prev_pid = -1;
 
 int TLB_Insert(vaddr_t faultaddress, paddr_t paddr){
 	uint32_t hi,lo;
@@ -69,10 +72,14 @@ int is_code_segment(vaddr_t vaddr){
 int TLB_Invalidate_all(void){
 	// Code to invalidate here
 	int i;
-	/* statistics */ add_TLB_invalidation();
-	for (i=0; i<NUM_TLB; i++) {
-		tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
+	/* Avoiding calls to this function at every thread-switch */
+	if(curproc->p_pid != prev_pid) {
+		/* statistics */ add_TLB_invalidation();
+		for (i=0; i<NUM_TLB; i++) {
+			tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
+		}
 	}
+	prev_pid = curproc->p_pid;
     return 0;
 }
 

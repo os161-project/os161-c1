@@ -662,7 +662,7 @@ thread_switch(threadstate_t newstate, struct wchan *wc, struct spinlock *lk)
 
 	/* do the switch (in assembler in switch.S) */
 	switchframe_switch(&cur->t_context, &next->t_context);
-
+	
 	/*
 	 * When we get to this point we are either running in the next
 	 * thread, or have come back to the same thread again,
@@ -716,6 +716,7 @@ thread_switch(threadstate_t newstate, struct wchan *wc, struct spinlock *lk)
 
 	/* Unlock the run queue. */
 	spinlock_release(&curcpu->c_runqueue_lock);
+
 
 	/* Activate our address space in the MMU. */
 	as_activate();
