@@ -272,8 +272,8 @@ mips_trap(struct trapframe *tf)
 		 * Fatal fault in user mode.
 		 * Kill the current user process.
 		 */
-		print_pt(IPT);
-		print_chunks(ST);
+		//print_pt(IPT);
+		//print_chunks(ST);
 		kill_curthread(tf->tf_epc, code, tf->tf_vaddr);
 		goto done;
 	}

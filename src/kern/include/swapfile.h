@@ -30,4 +30,8 @@ void print_chunks(swap_table st);
 
 void checkDuplicatedEntries(swap_table st);
 
+void delete_free_chunk(swap_table st,uint32_t chunk_to_delete);
+
+void insert_into_free_chunk_list(swap_table st, uint32_t chunk_to_add);
+
 #endif
