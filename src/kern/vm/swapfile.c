@@ -50,9 +50,7 @@ void swapout(swap_table st, uint32_t index, paddr_t paddr, uint32_t page_number,
 
     // Add page into swap table
     st->entries[index] = SET_PN(SET_PID(SET_SWAPPED(st->entries[index], 0), pid), page_number);
-    spinlock_release(&vm_lock);
     int result = VOP_WRITE(st->fp, &swap_uio);
-    spinlock_acquire(&vm_lock);
     if(result)     
         panic("VM_SWAP_OUT: Failed");
     if(invalidate)
@@ -67,9 +65,7 @@ void swapin(swap_table st, uint32_t index, paddr_t paddr){
 
     // Remove page from swap table
     st->entries[index] = SET_SWAPPED(st->entries[index], 1);
-    spinlock_release(&vm_lock);
     result=VOP_READ(st->fp, &swap_uio);
-    spinlock_acquire(&vm_lock);
     if(result) 
         panic("VM: SWAPIN Failed");
 }
@@ -193,17 +189,13 @@ void chunks_fork(swap_table st, pid_t src_pid, pid_t dst_pid){
             for(j = 0; j < 2; j++, offset_src += incr, offset_dst += incr){
                 //Reading from parent process chunk
                 uio_kinit(&iov, &swap_uio, buffer, incr, offset_src, UIO_READ);
-                spinlock_release(&vm_lock);
                 result = VOP_READ(st->fp, &swap_uio);
-                spinlock_acquire(&vm_lock);
                 if(result) 
                     panic("Failed forking chunks!\n");
                 
                 //Writing new chunk for child process
                 uio_kinit(&iov, &swap_uio, buffer, incr, offset_dst, UIO_WRITE);
-                spinlock_release(&vm_lock);
                 result = VOP_WRITE(st->fp, &swap_uio);
-                spinlock_acquire(&vm_lock);
                 if(result) 
                     panic("Failed forking chunks!\n");
             }

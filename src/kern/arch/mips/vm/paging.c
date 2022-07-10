@@ -149,6 +149,7 @@ free_kpages(vaddr_t addr)
 		for(frame_n = k_frames[i].start_frame_n_to_remove, j = 0; j < k_frames[i].n_pages; frame_n++, j++){
 			remove_page(IPT, frame_n);
 		}
+		frame_n_k += k_frames[i].n_pages;
 		if(i == start_index_k){
 			start_index_k = k_frames[i].next;
 			if(start_index_k != -1)
@@ -267,7 +268,6 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 	/* Disable interrupts on this CPU while frobbing the TLB. */
 	spl = splhigh();
-	spinlock_acquire(&vm_lock);
 	//spinlock_acquire(&vm_lock);
 	if(faultaddress <= MIPS_KSEG0) {
 		/* statistics */ add_TLB_fault();
@@ -285,7 +285,6 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		TLB_Insert(faultaddress,paddr);
 		//add to tlb
 		splx(spl);
-		spinlock_release(&vm_lock);
 		//spinlock_release(&vm_lock);
 		return 0;
 	}

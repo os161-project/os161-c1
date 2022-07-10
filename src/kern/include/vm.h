@@ -78,6 +78,7 @@ struct spinlock vm_lock;
 struct spinlock k_lock;
 kernel_frame *k_frames;
 int start_index_k, start_free_index;
+int frame_n_k;
 /* Printing VM statistics when shooting down the VM system */
 void vm_shutdown(void); 
 #endif
