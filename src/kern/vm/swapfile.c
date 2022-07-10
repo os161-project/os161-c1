@@ -9,11 +9,15 @@
 #include <current.h>
 
 // S = Swapped bit
+// C = Chain bit
+// P = Previous bit (for double linked list)
 //<----------------20------------>|<----6-----><-----6--->|
 //_________________________________________________________
-//|       Virtual Page Number     |       |C|S|     PID   |  
+//|       Virtual Page Number     |     |P|C|S|     PID   |  
 //|_______________________________|_______________________|
 //|                         Next                          |
+//|_______________________________________________________|
+//|                       Prev                            |
 //|_______________________________________________________|
 
 
@@ -28,18 +32,26 @@
 #define HAS_CHAIN(x) ((x) & 0x00000080) 
 #define SET_CHAIN(x, value) (((x) &~ 0x00000080) | (value << 7))
 #define IS_FULL(st) (st->first_free_chunk == st->last_free_chunk && !IS_SWAPPED(st->entries[st->first_free_chunk].hi))
+#define SET_PREV(x, value) (((x) &~ 0x00000100) | (value << 8))
+
+#define LIST 1
 
 
 struct STE{
-    uint32_t hi,low;
+    uint32_t hi;
+#if LIST
+    uint32_t next, prev;
+#endif
 };
 
 struct swapTable{
     struct vnode *fp;
     struct STE *entries;
     uint32_t size;
+#if LIST
     uint32_t first_free_chunk;
     uint32_t last_free_chunk;
+#endif
 };
 
 swap_table swapTableInit(char swap_file_name[]){
@@ -52,18 +64,37 @@ swap_table swapTableInit(char swap_file_name[]){
     VOP_STAT(result->fp, &file_stat);
     result->size = file_stat.st_size / PAGE_SIZE;
     result->entries = (struct STE*)kmalloc(result->size * sizeof(*(result->entries)));
+#if LIST
     result->first_free_chunk = 0;
+#endif
     for(i = 0; i < result->size - 1; i++){
-        //the chain of free frames is initialized here
-        result->entries[i].hi = SET_SWAPPED(SET_CHAIN(result->entries[i].hi,1), 1);
-        result->entries[i].low = i+1;
-
+#if LIST
+         //the chain of free frames is initialized here
+        result->entries[i].hi = SET_PREV(SET_SWAPPED(SET_CHAIN(result->entries[i].hi,1), 1),1);
+        result->entries[i].next = i+1;
+        if(i==0){
+            //if i==0 set the prev bit to 0 
+            result->entries[i].prev = 0;
+            result->entries[i].hi = SET_PREV(result->entries[i].hi,0);
+        }else{
+            result->entries[i].prev=i-1;
+        } 
+    
     }
+    
     //the last chunk has the chain bit set to 0
-    result->entries[i].hi = SET_SWAPPED(SET_CHAIN(result->entries[i].hi,0), 1);
-    result->entries[i].low = 0;
+    result->entries[i].hi = SET_PREV(SET_SWAPPED(SET_CHAIN(result->entries[i].hi,0), 1),1);
+    result->entries[i].next = 0;
+    result->entries[i].prev = i-1;
     result->last_free_chunk = i;
     //print_chunks(result);
+
+#else
+    for(i = 0; i < result->size; i++){
+        result->entries[i].hi = SET_SWAPPED(result->entries[i].hi,1);
+    }
+#endif
+
     return result;
 }
 
@@ -72,9 +103,9 @@ void swapout(swap_table st, uint32_t index, paddr_t paddr, uint32_t page_number,
     struct iovec iov;
 
     //update the first_free_chunk index
-   
+#if LIST  
     delete_free_chunk(st, index);
-    
+#endif
     uio_kinit(&iov, &swap_uio, (void*)PADDR_TO_KVADDR(paddr & PAGE_FRAME), PAGE_SIZE, index*PAGE_SIZE, UIO_WRITE);
   
 
@@ -104,20 +135,27 @@ void swapin(swap_table st, uint32_t index, paddr_t paddr){
     result=VOP_READ(st->fp, &swap_uio);
     if(result) 
         panic("VM: SWAPIN Failed");
-    
+#if LIST
     //manage the free chunk list (add a free chunk)
     insert_into_free_chunk_list(st, index);
+#endif
 }
 
 int getFirstFreeChunckIndex(swap_table st){
-   /* for(uint32_t i = 0; i < st->size; i++){
-        if(IS_SWAPPED(st->entries[i].hi))
-            return i;
-    }*/
-    //kprintf("%d\n",!IS_FULL(st));
+
+#if LIST
     if(!IS_FULL(st))
         return st->first_free_chunk;
+    
+#else
+    for(uint32_t i = 0; i < st->size; i++){
+        if(IS_SWAPPED(st->entries[i].hi))
+            return i;
+    }
+    
+#endif
     return -1;
+    
 }
 
 void elf_to_swap(swap_table st, struct vnode *v, off_t offset, uint32_t init_page_n, size_t memsize, pid_t PID){
@@ -149,8 +187,10 @@ void elf_to_swap(swap_table st, struct vnode *v, off_t offset, uint32_t init_pag
                     panic("Failed loading elf into swap area!\n");
                 
             }
+#if LIST
             // Add page into swap table
             delete_free_chunk(st,chunk_index);
+#endif
             st->entries[chunk_index].hi = SET_SWAPPED(SET_PID(SET_PN(st->entries[chunk_index].hi, init_page_n), PID), 0);
             //manage the free chunk list
             //since we have called the getFirstFreeChunkIndex we know that the st is not full yet
@@ -197,9 +237,10 @@ void elf_to_swap(swap_table st, struct vnode *v, off_t offset, uint32_t init_pag
         result = VOP_WRITE(st->fp, &ku_swap);
         if(result) 
             panic("Failed loading elf into swap area!\n");
-
+#if LIST
         // Add page into swap table
         delete_free_chunk(st, chunk_index);
+#endif
         st->entries[chunk_index].hi = SET_SWAPPED(SET_PID(SET_PN(st->entries[chunk_index].hi, init_page_n), PID), 0);
          //manage the free chunk list
         //since we have called the getFirstFreeChunkIndex we know that the st is not full yet
@@ -221,7 +262,9 @@ void all_proc_chunk_out(swap_table st){
     for(uint32_t i = 0; i < st->size; i++){
         if(GET_PID(st->entries[i].hi) == (uint32_t)curproc->p_pid){
             st->entries[i].hi = SET_SWAPPED(st->entries[i].hi, 1);
+#if LIST
             insert_into_free_chunk_list(st, i);
+#endif
         }
     }
 
@@ -254,7 +297,9 @@ void chunks_fork(swap_table st, pid_t src_pid, pid_t dst_pid){
                 if(result) 
                     panic("Failed forking chunks!\n");
             }
+#if LIST
             delete_free_chunk(st, free_chunk);
+#endif
             st->entries[free_chunk].hi = SET_PN(SET_PID(SET_SWAPPED(st->entries[free_chunk].hi, 0), dst_pid), GET_PN(st->entries[i].hi));
              //manage the free chunk list
             //since we have called the getFirstFreeChunkIndex we know that the st is not full yet
@@ -267,9 +312,9 @@ void chunks_fork(swap_table st, pid_t src_pid, pid_t dst_pid){
 void print_chunks(swap_table st){
     kprintf("\n");
     for(uint32_t i = 0; i < 10; i++){
-        kprintf("%d) : %x SWAPPED: %d  NEXT: %x\n", i, st->entries[i].hi, IS_SWAPPED(st->entries[i].hi), st->entries[i].low);
+        kprintf("%d) : %x SWAPPED: %d  NEXT: %x\n", i, st->entries[i].hi, IS_SWAPPED(st->entries[i].hi), st->entries[i].next);
     }
-    kprintf("last) : %x SWAPPED: %d  NEXT: %x\n" , st->entries[st->last_free_chunk].hi, IS_SWAPPED(st->entries[st->last_free_chunk].hi),st->entries[st->last_free_chunk].low);
+    kprintf("last) : %x SWAPPED: %d  NEXT: %x\n" , st->entries[st->last_free_chunk].hi, IS_SWAPPED(st->entries[st->last_free_chunk].hi),st->entries[st->last_free_chunk].next);
 }
 
 void checkDuplicatedEntries(swap_table st){
@@ -295,20 +340,26 @@ void checkDuplicatedEntries(swap_table st){
 
 void 
 delete_free_chunk(swap_table st,uint32_t chunk_to_delete){
-    if(st->first_free_chunk == chunk_to_delete)
-        st->first_free_chunk = st->entries[st->first_free_chunk].low;
-    else{
-        uint32_t i;
+    if(st->first_free_chunk == chunk_to_delete){
+        st->first_free_chunk = st->entries[st->first_free_chunk].next;
+        // the new first_free_chunk has no previous chunk in the list 
+        st->entries[st->first_free_chunk].hi = SET_PREV(st->entries[st->first_free_chunk].hi,0);
+    }else{
+        uint32_t prev;
         //go to the index through the free list
-        for(i = st->first_free_chunk; HAS_CHAIN(st->entries[i].hi) && st->entries[i].low != chunk_to_delete; i = st->entries[i].low);
-        if(i == st->last_free_chunk)
+        //for(i = st->first_free_chunk; HAS_CHAIN(st->entries[i].hi) && st->entries[i].next != chunk_to_delete; i = st->entries[i].next);
+        //get the previous chunk respect to the chunk_to_delete
+        prev = st->entries[chunk_to_delete].prev;
+        if(prev == st->last_free_chunk)
             panic("Maybe we forgot to add the frame to the free list!\n");
         if(chunk_to_delete == st->last_free_chunk){
-            st->last_free_chunk = i;
+            st->last_free_chunk = prev;
             //the last has no chain
-            st->entries[i].hi = SET_CHAIN(st->entries[i].hi,0);
+            st->entries[prev].hi = SET_CHAIN(st->entries[prev].hi,0);
         }else{
-            st->entries[i].low = st->entries[chunk_to_delete].low;
+            //assign next and prev again (skipping the chunk to delete)
+            st->entries[prev].next = st->entries[chunk_to_delete].next;
+            st->entries[st->entries[chunk_to_delete].next].prev = st->entries[chunk_to_delete].prev;
         }
     }
     
@@ -317,13 +368,21 @@ delete_free_chunk(swap_table st,uint32_t chunk_to_delete){
 void insert_into_free_chunk_list(swap_table st, uint32_t chunk_to_add){
     if(IS_FULL(st)){
         st->first_free_chunk = st->last_free_chunk = chunk_to_add;
-        st->entries[chunk_to_add].hi = SET_CHAIN(st->entries[chunk_to_add].hi, 0);
-
+        st->entries[chunk_to_add].hi = SET_PREV(SET_CHAIN(st->entries[chunk_to_add].hi, 0),0);
+        
     }else{
-        st->entries[st->last_free_chunk].hi = SET_CHAIN(st->entries[st->last_free_chunk].hi,1);
-        st->entries[st->last_free_chunk].low = chunk_to_add;
+
+        //insertion in tail
+        st->entries[st->last_free_chunk].hi = SET_PREV(SET_CHAIN(st->entries[st->last_free_chunk].hi,1),1);
+        st->entries[st->last_free_chunk].next = chunk_to_add;
+
+        //the prev of the last one is the previous last one
+        st->entries[chunk_to_add].prev = st->last_free_chunk; 
+        //update the last_free_chunk index
         st->last_free_chunk = chunk_to_add;
-        st->entries[st->last_free_chunk].low = 0;
-        st->entries[st->last_free_chunk].hi = SET_CHAIN(st->entries[st->last_free_chunk].hi,0);
+        
+        //the last one has no next but has a previous 
+        st->entries[st->last_free_chunk].next = 0;
+        st->entries[st->last_free_chunk].hi = SET_PREV(SET_CHAIN(st->entries[st->last_free_chunk].hi,0),1);
     }
 }
