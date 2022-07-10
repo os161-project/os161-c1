@@ -180,6 +180,8 @@ sys_reboot(int code)
 		return EINVAL;
 	}
 
+	/* Print out statistics */
+	vm_shutdown();
 	shutdown();
 
 	switch (code) {

@@ -5,7 +5,6 @@
 #include <vm.h>
 #include <kern/fcntl.h>
 #include <vfs.h>
-#include <spl.h>
 #include <proc.h>
 #include <current.h>
 
@@ -69,7 +68,6 @@ swap_table swapTableInit(char swap_file_name[]){
 }
 
 void swapout(swap_table st, uint32_t index, paddr_t paddr, uint32_t page_number, uint32_t pid, bool invalidate){
-    int spl=splhigh();
     struct uio swap_uio;
     struct iovec iov;
 
@@ -83,18 +81,16 @@ void swapout(swap_table st, uint32_t index, paddr_t paddr, uint32_t page_number,
     // Add page into swap table
     st->entries[index].hi = SET_PN(SET_PID(SET_SWAPPED(st->entries[index].hi, 0), pid), page_number);
 
-    splx(spl);
+    
     int result = VOP_WRITE(st->fp, &swap_uio);
     if(result)     
         panic("VM_SWAP_OUT: Failed");
-    spl=splhigh();
     if(invalidate)
         TLB_Invalidate(paddr);
-    splx(spl);
 }
 
 void swapin(swap_table st, uint32_t index, paddr_t paddr){
-    int spl=splhigh(), result;
+    int result;
     struct uio swap_uio;
     struct iovec iov;
 
@@ -104,9 +100,8 @@ void swapin(swap_table st, uint32_t index, paddr_t paddr){
 
     // Remove page from swap table
     st->entries[index].hi = SET_SWAPPED(st->entries[index].hi, 1);
-    splx(spl);
+   
     result=VOP_READ(st->fp, &swap_uio);
-
     if(result) 
         panic("VM: SWAPIN Failed");
     
@@ -126,7 +121,6 @@ int getFirstFreeChunckIndex(swap_table st){
 }
 
 void elf_to_swap(swap_table st, struct vnode *v, off_t offset, uint32_t init_page_n, size_t memsize, pid_t PID){
-    int spl=splhigh();
     struct iovec iov_swap, iov_elf;
 	struct uio ku_swap, ku_elf;
     char buffer[PAGE_SIZE / 2];
@@ -190,12 +184,20 @@ void elf_to_swap(swap_table st, struct vnode *v, off_t offset, uint32_t init_pag
         result = VOP_READ(v, &ku_elf);
         if(result) 
             panic("Failed loading elf into swap area!\n");
+
+        /*ku_elf.uio_resid += (incr - memsize + offset);
+        iov_elf.iov_len += (incr - memsize + offset);
+		result = uiomovezeros((incr - memsize + offset), &ku_elf);
+        if(result) 
+            panic("Failed zeroing the page!\n");
+        */
         
         // Write page into swapfile
         uio_kinit(&iov_swap, &ku_swap, buffer, incr, chunk_offset, UIO_WRITE);
         result = VOP_WRITE(st->fp, &ku_swap);
         if(result) 
             panic("Failed loading elf into swap area!\n");
+
         // Add page into swap table
         delete_free_chunk(st, chunk_index);
         st->entries[chunk_index].hi = SET_SWAPPED(SET_PID(SET_PN(st->entries[chunk_index].hi, init_page_n), PID), 0);
@@ -204,8 +206,6 @@ void elf_to_swap(swap_table st, struct vnode *v, off_t offset, uint32_t init_pag
         
        
     }
-    //print_chunks(st);
-    splx(spl);
 }
 
 int getSwapChunk(swap_table st, vaddr_t faultaddress, pid_t pid){

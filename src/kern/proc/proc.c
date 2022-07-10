@@ -166,7 +166,6 @@ proc_create(const char *name)
 	proc->start_pt_i = 0;
 	proc->last_pt_i = 0;
 	proc->n_frames = 0;
-	proc->n_contiguous_kernel_pages = 0;
 #endif
 
 	proc_init_waitpid(proc,name);

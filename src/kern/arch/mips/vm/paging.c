@@ -44,6 +44,7 @@
 #include <mainbus.h>
 #include "vm_tlb.h"
 #include <syscall.h>
+#include <vmstats.h>
 
 /* under dumbvm, always have 72k of user stack */
 /* (this must be > 64K so argument blocks of size ARG_MAX will fit) */
@@ -58,8 +59,29 @@ void
 vm_bootstrap(void)
 {
 	vm_enabled = 0;
-	//spinlock_init(&vm_lock);
+	uint32_t i;
+	spinlock_init(&vm_lock);
+	spinlock_init(&k_lock);
 
+	k_frames = kmalloc(MAX_PROCESSES * sizeof(*k_frames));
+	for(i = 0; i < MAX_PROCESSES; i++){
+		if(i == 0){
+			k_frames[i].prev = -1;
+			k_frames[i].next = 1;
+		}else if(i == MAX_PROCESSES - 1){
+			k_frames[i].next = -1;
+			k_frames[i].prev = i - 1;
+		}else{
+			k_frames[i].prev = i - 1;
+			k_frames[i].next = i + 1;
+		}
+		k_frames[i].owner = 0;
+		k_frames[i].n_pages = 0;
+		k_frames[i].start_frame_n_to_remove = 0;
+		k_frames[i].vaddr_to_free = 0;
+	}
+	start_index_k = -1;
+	start_free_index = 0;
 	// Swap area init
 	char swap_file_name[] = "lhd0raw:";
 	ST = swapTableInit(swap_file_name);
@@ -73,6 +95,8 @@ vm_bootstrap(void)
 	// in this way we don't keep track of the page where the IPT and ST are stored
 	IPT = pageTInit((ram_size-ram_user_base-PAGE_SIZE)/PAGE_SIZE);
 	vm_enabled = 1;
+	/* Now we can start keeping track of VM stats */
+	stat_bootstrap();
 }
 
 static
@@ -93,6 +117,7 @@ getppages(unsigned long npages)
 vaddr_t
 alloc_kpages(unsigned npages)
 {
+	int spl = splhigh();
 	paddr_t pa;
 	if(vm_enabled) {
 		//alloc n contiguous pages
@@ -104,29 +129,45 @@ alloc_kpages(unsigned npages)
 		}
 
 	}
+	splx(spl);
 	return PADDR_TO_KVADDR(pa);
 }
 
 void
 free_kpages(vaddr_t addr)
 {
-	int frame_n;
-	/* nothing - leak the memory. */
+	int frame_n, i;
+	uint32_t j;
+	int spl = splhigh();
 	if(vm_enabled) {
-		//spinlock_acquire(&vm_lock);
-		// Do something ...
-		//spinlock_release(&vm_lock);
-		while(curproc->n_contiguous_kernel_pages > 0){
-			frame_n = getFrameAddress(IPT, addr >> 12, true);
-			if(frame_n != -1){
-				KASSERT(getPID(IPT, frame_n) == (uint32_t)curproc->p_pid);
-				remove_page(IPT, frame_n);
-			}else{
-				panic("Where is that frame?!\n");
-			}
-			curproc->n_contiguous_kernel_pages--;
+		spinlock_acquire(&k_lock);
+
+		addr &= PAGE_FRAME;
+		for(i = start_index_k; i != -1 && k_frames[i].vaddr_to_free != addr; i = k_frames[i].next);
+		if(i == -1)
+			panic("Where is that frame?!\n");
+		for(frame_n = k_frames[i].start_frame_n_to_remove, j = 0; j < k_frames[i].n_pages; frame_n++, j++){
+			remove_page(IPT, frame_n);
 		}
+		frame_n_k += k_frames[i].n_pages;
+		if(i == start_index_k){
+			start_index_k = k_frames[i].next;
+			if(start_index_k != -1)
+				k_frames[start_index_k].prev = -1;
+		}else{
+			k_frames[k_frames[i].prev].next = k_frames[i].next;
+			if(k_frames[i].next != -1)
+				k_frames[k_frames[i].next].prev = k_frames[i].prev;
+		}
+		k_frames[start_free_index].prev = i;
+		k_frames[i].next = start_free_index;
+		k_frames[i].prev = -1;
+		start_free_index = i;
+		spinlock_release(&k_lock);
+	}else{
+		/* nothing - leak the memory. */
 	}
+	splx(spl);
 }
 
 void
@@ -134,6 +175,12 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
 {
 	(void)ts;
 	panic("dumbvm tried to do tlb shootdown?!\n");
+}
+
+void
+vm_shutdown(void) 
+{
+	print_stats();
 }
 
 int
@@ -222,14 +269,17 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	/* Disable interrupts on this CPU while frobbing the TLB. */
 	spl = splhigh();
 	//spinlock_acquire(&vm_lock);
-	if(faultaddress <= MIPS_KSEG0){
-
+	if(faultaddress <= MIPS_KSEG0) {
+		/* statistics */ add_TLB_fault();
 		//retrieve the frame number in the page table
 		paddr = getFrameAddress(IPT,(faultaddress & PAGE_FRAME) >> 12, false);
 		if(paddr==-1){
 			//PAGE FAULT
-			//TO_DO: handle page fault
+			/* Page was not already in memory, we need to handle page fault */
 			paddr = pageIn(IPT, curproc->p_pid, faultaddress, ST);
+		} else {
+			/* Page is already in memory, we just need to reload the entry in the TLB */
+			/* statistics */ add_TLB_reload();
 		}
 		paddr = paddr & PAGE_FRAME;
 		TLB_Insert(faultaddress,paddr);
@@ -239,6 +289,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		return 0;
 	}
 	splx(spl);
+	spinlock_release(&vm_lock);
 	//spinlock_release(&vm_lock);
 	return EFAULT;
 }

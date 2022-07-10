@@ -3,11 +3,10 @@
 #include <current.h>
 #include <proc.h>
 #include <vm.h>
-#include <spl.h>
-#include <copyinout.h>
+#include <vmstats.h>
 
 // V = validity bit
-// C = chain bit (if next field has a value)
+// C = chain bit (if next field has a valid value)
 //<----------------20------------>|<----6-----><----6---->|
 //_________________________________________________________
 //|       Virtual Page Number     |                 |K|C|V|  hi
@@ -29,6 +28,10 @@
 #define SET_KERNEL(x, value) (((x) &~ 0x00000004) | (value << 2))
 #define IS_FULL(pt) (pt->first_free_frame == pt->last_free_frame && IS_VALID(pt->entries[pt->first_free_frame].hi))
 
+#define FIFO_RA 1
+#define RAND_RA 0
+#define RA FIFO_RA
+
 struct PTE{
     uint32_t hi, low;
 };
@@ -42,14 +45,23 @@ struct pT{
     uint32_t first_free_frame;
     uint32_t last_free_frame;
     paddr_t mem_base_addr;
+    uint32_t *FIFO;
+    uint32_t FIFO_index_start;
+    uint32_t FIFO_index_last;
 };
 
 page_table pageTInit(uint32_t n_pages){
     uint32_t i;
     page_table tmp = kmalloc(sizeof(*tmp));
     tmp->entries = kmalloc(n_pages * sizeof(*(tmp->entries)));
+#if RA
+    tmp->FIFO = kmalloc(n_pages * sizeof(*(tmp->FIFO)));
+    tmp->FIFO_index_start = 0;
+    tmp->FIFO_index_last = n_pages - 1;
+#endif
     tmp->mem_base_addr = ram_stealmem(0);
     tmp->size = n_pages;
+    frame_n_k = n_pages - 1;
     tmp->first_free_frame = 0;
     for(i = 0; i < n_pages - 1; i++){
         //the chain of free frames is built here
@@ -68,7 +80,7 @@ page_table pageTInit(uint32_t n_pages){
 //Add a new entry into page table, set V, set next and chain bit to zero.
 void addEntry(page_table pt, uint32_t page_n, uint32_t index, uint32_t pid){
 
-    //Update free frame list pointers
+    //Remove the page from free frames list
     if(pt->first_free_frame != pt->last_free_frame){
         if(pt->first_free_frame == index){
             pt->first_free_frame = GET_NEXT(pt->entries[pt->first_free_frame].low);
@@ -96,26 +108,27 @@ void addEntry(page_table pt, uint32_t page_n, uint32_t index, uint32_t pid){
         pt->entries[index].low = SET_PID(SET_NEXT(pt->entries[index].low, 0), pid);
     }
 
-    if(curproc->n_frames == 0){
+    // Add the page into process list
+    if(curthread->t_proc->n_frames == 0){
         //we need to update also the head of the chain
-        curproc->start_pt_i = index;
+        curthread->t_proc->start_pt_i = index;
     }else{
         //the penultimate frame of the chain is updated
         //the chain is updated and the next field is updated indexing the last frame
-        pt->entries[curproc->last_pt_i].hi = SET_CHAIN(pt->entries[curproc->last_pt_i].hi, 1);
-        pt->entries[curproc->last_pt_i].low = SET_NEXT(pt->entries[curproc->last_pt_i].low, index);
+        pt->entries[curthread->t_proc->last_pt_i].hi = SET_CHAIN(pt->entries[curthread->t_proc->last_pt_i].hi, 1);
+        pt->entries[curthread->t_proc->last_pt_i].low = SET_NEXT(pt->entries[curthread->t_proc->last_pt_i].low, index);
     }
-    curproc->last_pt_i = index;
-    curproc->n_frames++;
+    curthread->t_proc->last_pt_i = index;
+    curthread->t_proc->n_frames++;
     return;
 }
 
 //Return the index where page number is stored in, if page is not stored in memory, return -1
 int getFrameAddress(page_table pt, uint32_t page_n, bool frame){
-    //KASSERT(GET_PID(pt->entries[curproc->start_pt_i].low) == curproc->p_pid);
+    //KASSERT(GET_PID(pt->entries[curthread->t_proc->start_pt_i].low) == curthread->t_proc->p_pid);
     uint32_t frame_n = -1;
     
-    for(int i = curproc->start_pt_i; i != -1; i = GET_NEXT(pt->entries[i].low)){
+    for(int i = curthread->t_proc->start_pt_i; i != -1; i = GET_NEXT(pt->entries[i].low)){
         if(GET_PN(pt->entries[i].hi) == page_n){
             if(frame)
                 frame_n = i;
@@ -167,133 +180,100 @@ void pageTFree(page_table pt){
 }
 
 uint32_t replace_page(page_table pt){
-    int spl = splhigh(); // TODO: Check if this splhigh is needed or not
-    uint32_t page_index;
 
-    do{
-        page_index = random() % pt->size;
-    }while(IS_KERNEL(pt->entries[page_index].hi));
+    uint32_t page_index;
     
-    splx(spl);
+#if RA
+    do{
+        pt->FIFO_index_last = (pt->FIFO_index_last + 1) % pt->size;
+        page_index = pt->FIFO[pt->FIFO_index_last];
+    }while(IS_KERNEL(pt->entries[page_index].hi));
+#else
+    page_index = random() % (frame_n_k + 1);
+    (void) pt;
+#endif
+
     return page_index;
 }
 
 paddr_t pageIn(page_table pt, uint32_t pid, vaddr_t vaddr, swap_table ST) {
-    int spl;
     paddr_t paddr;
     int chunk_index;
 
-    spl = splhigh();
     paddr = insert_page(pt, vaddr, ST, -1);
     //load a frame in memory
     chunk_index = getSwapChunk(ST, vaddr, pid);
     if(chunk_index != -1){
+        /* Getting the new page from the swap file */
         swapin(ST, chunk_index, paddr);
+        /* statistics */ add_VM_pageFault(VM_SWAP);
     }
-
-    splx(spl);
+    /* statistics */ add_VM_pageFault(VM_ZEROED);
     return paddr;
 }
 
 void  all_proc_page_out(page_table pt){
     int i, n_frames_left, tmp;
 
-    if(curproc->n_frames > 1){
-        for(i = curproc->start_pt_i, n_frames_left = curproc->n_frames; n_frames_left > 0; i = tmp, n_frames_left--){
+    if(curthread->t_proc->n_frames > 1){
+        for(i = curthread->t_proc->start_pt_i, n_frames_left = curthread->t_proc->n_frames; n_frames_left > 0; i = tmp, n_frames_left--){
             tmp = GET_NEXT(pt->entries[i].low);
             remove_page(pt, i);
         }
     }else{
-        remove_page(pt, curproc->start_pt_i);
+        remove_page(pt, curthread->t_proc->start_pt_i);
     }
 }
 
 
 paddr_t alloc_n_contiguos_pages(uint32_t npages, page_table pt){
-	uint32_t i;
-    int spl=splhigh();
+	uint32_t i, index;
 
-	unsigned int count=0, swap_index=0, between_kernel_page=0;
-    unsigned int big_count=0, big_index=0, index = 0, contiguous_pages=0;
     int free_chunk_index;
 
-	for(i=0; i< pt->size; i++){
-		if(IS_KERNEL(pt->entries[i].hi)){
-            between_kernel_page=0;
-        }else{
-            //last page was a kernel page, restart the count
-            if(between_kernel_page==0){
-                swap_index=i;
-            }
-            //increment the number of contiguous pages between two kernel pages
-            between_kernel_page++;
+    spinlock_acquire(&k_lock);
+    index = frame_n_k;
 
-            //if we have found more than npages contiguous between two kernel pages
-            // the hole could be a valid one
-            if(between_kernel_page >= npages){
-            //update index and size of the biggest hole found at this time
-                if(big_count > count){
-                    big_count= count;
-                    big_index= swap_index;
-                }
+    for(i=frame_n_k; i > frame_n_k - npages; i--){
+        if(IS_VALID(pt->entries[i].hi)){
+            free_chunk_index= getFirstFreeChunckIndex(ST);
+            if(free_chunk_index == -1){
+                panic("Wait...is swap area full?!");
             }
+            spinlock_release(&k_lock);
+            swapout(ST, free_chunk_index, (i*PAGE_SIZE) + pt->mem_base_addr, GET_PN(pt->entries[i].hi), GET_PID(pt->entries[i].low), true);
+            spinlock_acquire(&k_lock);
+            remove_page(pt, i);
         }
-        //if the page is not valid we can start the count
-        if(!IS_VALID(pt->entries[i].hi)){
-            index=i;
-            count=0;
-            count++;
-        }else{
-            //this page is not valid, check if we have found n contiguous free pages
-            if(count >=npages){
-                break;
-            }
-        }
-		
-	}
-
-    //check if I have NOT found n contiguous free pages
-    if(count<npages){
-        if(big_count < npages){
-            //this amount of contiguous pages cannot be obtained 
-            splx(spl);
-            panic("This amount of contiguous pages cannot be obtained\n");
-
-        }else{
-            
-            //we have enough contiguous pages between two kernel pages
-            for(i=big_index; i< big_index +big_count; i++){
-                //contiguous pages starts from 0
-                //this is used in order to stop the swapping out of the pages when it is no more necessary
-                contiguous_pages++;
-
-                if(IS_VALID(pt->entries[i].hi)){
-                    //if the page is valid i need to swap out
-
-                    free_chunk_index= getFirstFreeChunckIndex(ST);
-                    if(free_chunk_index == -1){
-                        panic("Wait...is swap area full?!");
-                    }
-                    splx(spl);
-
-                    swapout(ST, free_chunk_index, (i*PAGE_SIZE) + pt->mem_base_addr, GET_PN(pt->entries[i].hi), GET_PID(pt->entries[i].low), true);
-                    remove_page(pt, i);
-                }
-                if(contiguous_pages >= npages){
-                    break;
-                }
-            }
-            index= big_index;
-        }
-    }
-
-    for(i=index; i< index+ npages; i++){
         insert_page(pt, (PADDR_TO_KVADDR((i* PAGE_SIZE) + pt->mem_base_addr)), ST, i);
     }
 
-    curproc->n_contiguous_kernel_pages = npages;
-    splx(spl);
+    frame_n_k -= npages;
+    if(frame_n_k < 0)
+        panic("\nPage table full of kernel pages!\n");
 
+    if(start_index_k == -1){
+        start_index_k = start_free_index;
+        start_free_index = k_frames[start_free_index].next;
+        k_frames[start_index_k].start_frame_n_to_remove = index;
+        k_frames[start_index_k].vaddr_to_free = PADDR_TO_KVADDR(((index * PAGE_SIZE) + pt->mem_base_addr) & PAGE_FRAME);
+        k_frames[start_index_k].owner = curthread->t_proc->p_pid;
+        k_frames[start_index_k].n_pages = npages;
+        k_frames[start_index_k].next = -1;
+        k_frames[start_index_k].prev = -1;
+    }else{
+        int i;
+        for(i = start_index_k; k_frames[i].next != -1; i = k_frames[i].next);
+        k_frames[i].next = start_free_index;
+        k_frames[start_free_index].prev = i;
+        start_free_index = k_frames[start_free_index].next;
+        k_frames[k_frames[i].next].next = -1;
+        k_frames[i].start_frame_n_to_remove = index;
+        k_frames[i].vaddr_to_free = PADDR_TO_KVADDR(((index * PAGE_SIZE) + pt->mem_base_addr) & PAGE_FRAME);
+        k_frames[i].owner = curthread->t_proc->p_pid;
+        k_frames[i].n_pages = npages;
+    }
+    spinlock_release(&k_lock);
 
     return ((index * PAGE_SIZE) + pt->mem_base_addr) & PAGE_FRAME;
 	
@@ -324,13 +304,16 @@ paddr_t insert_page(page_table pt, vaddr_t vaddr, swap_table ST, int suggested_f
         frame_address = frame_n * PAGE_SIZE + pt->mem_base_addr;
     }
     // add an entry in the first free frame of the ipt
-    addEntry(pt, (vaddr & PAGE_FRAME) >> 12,  frame_n, curproc->p_pid);
-
+    addEntry(pt, (vaddr & PAGE_FRAME) >> 12,  frame_n, curthread->t_proc->p_pid);
+    //Add frame into FIFO
+    pt->FIFO[pt->FIFO_index_start] = frame_n;
+    pt->FIFO_index_start = (pt->FIFO_index_start + 1) % pt->size;
     return frame_address;
 }
 
 void remove_page(page_table pt, uint32_t frame_n){
     struct proc *p = proc_search_pid(GET_PID(pt->entries[frame_n].low));
+    // Remove the page from process list
     if(p != NULL){
         if(p->n_frames != 1){
             if(p->start_pt_i == frame_n){
@@ -352,6 +335,7 @@ void remove_page(page_table pt, uint32_t frame_n){
         }
         p->n_frames--;
     }
+    // Insert the page into free list
     if(IS_FULL(pt)){
         pt->first_free_frame = pt->last_free_frame = frame_n;
     }else{
@@ -386,5 +370,5 @@ void print_pt(page_table pt){
         kprintf("%2d) Hi: %8x low: %8x next: %2d PID: %2d PN: %8d CHAIN: %1d\n", i, pt->entries[i].hi, pt->entries[i].low, GET_NEXT(pt->entries[i].low), GET_PID(pt->entries[i].low), GET_PN(pt->entries[i].hi), HAS_CHAIN(pt->entries[i].hi));
     }
     kprintf("\nFirst free frame: %d\nLast free frame: %d\n",pt->first_free_frame, pt->last_free_frame);
-    kprintf("Current process first page index: %d\nCurrent process last page index: %d\n", curproc->start_pt_i, curproc->last_pt_i);
+    kprintf("Current process first page index: %d\nCurrent process last page index: %d\n", curthread->t_proc->start_pt_i, curthread->t_proc->last_pt_i);
 }
