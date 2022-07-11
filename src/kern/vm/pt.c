@@ -7,6 +7,7 @@
 
 // V = validity bit
 // C = chain bit (if next field has a valid value)
+// K = kernel bit (if the frame has been occupied by the kernel)
 //<----------------20------------>|<----6-----><----6---->|
 //_________________________________________________________
 //|       Virtual Page Number     |                 |K|C|V|  hi
@@ -39,15 +40,15 @@ struct PTE{
 struct pT{
     struct PTE *entries;
     uint32_t size;
-    //free frames are managed as a list of pages for a process
-    //so we have a chain of free frame, first_free_frame is the index of the first free frame of the list
+    //free frames are managed as a list of pages
+    //so we have a chain of free frames, first_free_frame is the index of the first free frame of the list
     //the next free frame is the one indexed by the next field in the low part
     uint32_t first_free_frame;
     uint32_t last_free_frame;
-    paddr_t mem_base_addr;
-    uint32_t *FIFO;
-    uint32_t FIFO_index_start;
-    uint32_t FIFO_index_last;
+    paddr_t mem_base_addr;      /*Used to keep track of the last address occupied by the kernel before the VM system was active*/
+    uint32_t *FIFO;             /*FIFO*/
+    uint32_t FIFO_index_start;  /*Index used to keep track of the last inserted element*/
+    uint32_t FIFO_index_last;   /*Index used to keep track of the first element which has been inserted*/
 };
 
 page_table pageTInit(uint32_t n_pages){
@@ -143,47 +144,12 @@ int getFrameAddress(page_table pt, uint32_t page_n, bool frame){
     return frame_n;
 }
 
-// Return the page number for a given page table entry (corresponding to the given index)
-uint32_t getPageN(page_table pt, uint32_t index) {
-    uint32_t page_n; 
-    
-    KASSERT(pt->entries != NULL);
-    page_n = GET_PN(pt->entries[index].hi);
-    
-    return page_n;
-}
-
-// Return the PID stored in a page table entry, corresponding to the given index
-uint32_t getPID(page_table pt, uint32_t index) {
-    pid_t pid;
-    
-    KASSERT(pt->entries != NULL);
-    pid = GET_PID(pt->entries[index].low);
-    
-    return pid;
-}
-
-void setInvalid(page_table pt, uint32_t index){
-    
-    pt->entries[index].hi = SET_VALID(pt->entries[index].hi, 0);
-    
-    return;
-}
-
-//Use kfree function
-void pageTFree(page_table pt){
-    
-    kfree(pt->entries);
-    kfree(pt);
-    
-    return;
-}
-
 uint32_t replace_page(page_table pt){
 
     uint32_t page_index;
     
 #if RA
+    //print_FIFO(pt);
     do{
         pt->FIFO_index_last = (pt->FIFO_index_last + 1) % pt->size;
         page_index = pt->FIFO[pt->FIFO_index_last];
@@ -305,9 +271,11 @@ paddr_t insert_page(page_table pt, vaddr_t vaddr, swap_table ST, int suggested_f
     }
     // add an entry in the first free frame of the ipt
     addEntry(pt, (vaddr & PAGE_FRAME) >> 12,  frame_n, curthread->t_proc->p_pid);
+#if RA
     //Add frame into FIFO
     pt->FIFO[pt->FIFO_index_start] = frame_n;
     pt->FIFO_index_start = (pt->FIFO_index_start + 1) % pt->size;
+#endif
     return frame_address;
 }
 
@@ -371,4 +339,13 @@ void print_pt(page_table pt){
     }
     kprintf("\nFirst free frame: %d\nLast free frame: %d\n",pt->first_free_frame, pt->last_free_frame);
     kprintf("Current process first page index: %d\nCurrent process last page index: %d\n", curthread->t_proc->start_pt_i, curthread->t_proc->last_pt_i);
+}
+
+void print_FIFO(page_table pt){
+    uint32_t i;
+    for(i = 0; i < pt->size; i++){
+        kprintf("%2d) %6d\n", i, pt->FIFO[i]);
+    }
+    kprintf("FIFO_index_last: %d\n", pt->FIFO_index_last);
+    kprintf("FIFO_index_start: %d\n", pt->FIFO_index_start);
 }

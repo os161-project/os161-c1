@@ -63,6 +63,7 @@ void vm_tlbshootdown(const struct tlbshootdown *);
 
 #if OPT_PAGING
 #define MAX_PROCESSES 64
+#define PAGES_FOR_IPT 1
 
 typedef struct{
     vaddr_t vaddr_to_free;

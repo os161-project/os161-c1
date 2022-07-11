@@ -84,7 +84,6 @@ struct proc {
 		uint32_t start_pt_i;			/*Page table index representing frames list head*/
 		uint32_t last_pt_i;				/*Page table index representing frames list tail*/
 		uint32_t n_frames;				/*Number of frames owned by the process*/
-		uint32_t n_contiguous_kernel_pages;
 		struct openfile *fileTable[OPEN_MAX];
 #endif
 

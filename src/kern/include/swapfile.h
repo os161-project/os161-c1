@@ -10,8 +10,6 @@ typedef struct swapTable *swap_table;
 
 swap_table swapTableInit(char swap_file_name[]);
 
-swap_table getSwapTable();
-
 void swapout(swap_table st, uint32_t index, paddr_t paddr, uint32_t page_number, uint32_t pid, bool invalidate);
 
 void swapin(swap_table st, uint32_t index, paddr_t paddr);

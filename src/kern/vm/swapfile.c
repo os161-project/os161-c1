@@ -34,7 +34,7 @@
 #define IS_FULL(st) (st->first_free_chunk == st->last_free_chunk && !IS_SWAPPED(st->entries[st->first_free_chunk].hi))
 #define SET_PREV(x, value) (((x) &~ 0x00000100) | (value << 8))
 
-#define LIST 1
+#define LIST 0
 
 
 struct STE{
@@ -66,9 +66,7 @@ swap_table swapTableInit(char swap_file_name[]){
     result->entries = (struct STE*)kmalloc(result->size * sizeof(*(result->entries)));
 #if LIST
     result->first_free_chunk = 0;
-#endif
     for(i = 0; i < result->size - 1; i++){
-#if LIST
          //the chain of free frames is initialized here
         result->entries[i].hi = SET_PREV(SET_SWAPPED(SET_CHAIN(result->entries[i].hi,1), 1),1);
         result->entries[i].next = i+1;
@@ -312,9 +310,17 @@ void chunks_fork(swap_table st, pid_t src_pid, pid_t dst_pid){
 void print_chunks(swap_table st){
     kprintf("\n");
     for(uint32_t i = 0; i < 10; i++){
+#if LIST
         kprintf("%d) : %x SWAPPED: %d  NEXT: %x\n", i, st->entries[i].hi, IS_SWAPPED(st->entries[i].hi), st->entries[i].next);
+#else
+        kprintf("%d) : %x SWAPPED: %d\n", i, st->entries[i].hi, IS_SWAPPED(st->entries[i].hi));
+#endif
     }
+#if LIST
     kprintf("last) : %x SWAPPED: %d  NEXT: %x\n" , st->entries[st->last_free_chunk].hi, IS_SWAPPED(st->entries[st->last_free_chunk].hi),st->entries[st->last_free_chunk].next);
+#else
+    kprintf("last) : %x SWAPPED: %d" , st->entries[st->size - 1].hi, IS_SWAPPED(st->entries[st->size - 1].hi));
+#endif
 }
 
 void checkDuplicatedEntries(swap_table st){
@@ -337,7 +343,7 @@ void checkDuplicatedEntries(swap_table st){
     return;
 }
 
-
+#if LIST
 void 
 delete_free_chunk(swap_table st,uint32_t chunk_to_delete){
     if(st->first_free_chunk == chunk_to_delete){
@@ -351,7 +357,7 @@ delete_free_chunk(swap_table st,uint32_t chunk_to_delete){
         //get the previous chunk respect to the chunk_to_delete
         prev = st->entries[chunk_to_delete].prev;
         if(prev == st->last_free_chunk)
-            panic("Maybe we forgot to add the frame to the free list!\n");
+            panic("Maybe we forgot to add the chunk to the free list!\n");
         if(chunk_to_delete == st->last_free_chunk){
             st->last_free_chunk = prev;
             //the last has no chain
@@ -386,3 +392,4 @@ void insert_into_free_chunk_list(swap_table st, uint32_t chunk_to_add){
         st->entries[st->last_free_chunk].hi = SET_PREV(SET_CHAIN(st->entries[st->last_free_chunk].hi,0),1);
     }
 }
+#endif

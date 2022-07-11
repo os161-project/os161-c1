@@ -14,19 +14,8 @@ void addEntry(page_table pt, uint32_t page_n, uint32_t index, uint32_t pid);
 // Return the index (frame number) where page number is stored in, if page is not stored in memory, return -1
 int getFrameAddress(page_table pt, uint32_t page_n, bool frame);
 
-// Return the page number for a given page table entry (corresponding to the given index)
-uint32_t getPageN(page_table pt, uint32_t index);
-
-// Return the PID stored in a page table entry, corresponding to the given index
-uint32_t getPID(page_table pt, uint32_t index);
-
-void setInvalid(page_table pt, uint32_t index);
-
 // Load new Page in the process address space, doing a swap-in from swapfile
 paddr_t pageIn (page_table pt, uint32_t pid, vaddr_t vaddr, swap_table st);
-
-//Use kfree function
-void pageTFree(page_table pt);
 
 uint32_t replace_page(page_table pt);
 
@@ -41,5 +30,7 @@ void remove_page(page_table pt, uint32_t frame_n);
 void pages_fork(page_table pt, uint32_t start_src_frame, pid_t dst_pid);
 
 void print_pt(page_table pt);
+
+void print_FIFO(page_table pt);
 
 #endif
