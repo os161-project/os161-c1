@@ -28,18 +28,18 @@
 #define GET_PN(entry) ((entry &~ 0x00000FFF) >> 12)
 #define SET_PID(entry, pid) ((entry &~ 0x0000003F) | pid)
 #define GET_PID(entry) (entry & 0x0000003F)
+#if LIST_ST
 //the chain is used only for the free chunk list
-#define HAS_CHAIN(x) ((x) & 0x00000080) 
+#define HAS_CHAIN(x) ((x) & 0x00000080)
+#define HAS_PREV(x) ((x) & 0x00000100)
 #define SET_CHAIN(x, value) (((x) &~ 0x00000080) | (value << 7))
 #define IS_FULL(st) (st->first_free_chunk == st->last_free_chunk && !IS_SWAPPED(st->entries[st->first_free_chunk].hi))
 #define SET_PREV(x, value) (((x) &~ 0x00000100) | (value << 8))
-
-#define LIST 0
-
+#endif
 
 struct STE{
     uint32_t hi;
-#if LIST
+#if LIST_ST
     uint32_t next, prev;
 #endif
 };
@@ -48,11 +48,30 @@ struct swapTable{
     struct vnode *fp;
     struct STE *entries;
     uint32_t size;
-#if LIST
+#if LIST_ST
     uint32_t first_free_chunk;
     uint32_t last_free_chunk;
 #endif
 };
+
+#if LIST_ST
+static void insert_into_process_chunk_list(swap_table st, uint32_t chunk_to_add, struct proc *p){
+    if(p->n_chunks == 0){
+        //we need to update also the head of the chain
+        p->start_st_i = chunk_to_add;
+        st->entries[chunk_to_add].hi = SET_CHAIN(SET_PREV(st->entries[chunk_to_add].hi, 0), 0);
+    }else{
+        //the penultimate frame of the chain is updated
+        //the chain is updated and the next field is updated indexing the last frame
+        st->entries[p->last_st_i].hi = SET_CHAIN(st->entries[p->last_st_i].hi, 1);
+        st->entries[p->last_st_i].next = chunk_to_add;
+        st->entries[chunk_to_add].hi = SET_CHAIN(SET_PREV(st->entries[chunk_to_add].hi, 1), 0);
+        st->entries[chunk_to_add].prev = p->last_st_i;
+    }
+    p->last_st_i = chunk_to_add;
+    p->n_chunks++;
+}
+#endif
 
 swap_table swapTableInit(char swap_file_name[]){
     struct stat file_stat;
@@ -64,7 +83,7 @@ swap_table swapTableInit(char swap_file_name[]){
     VOP_STAT(result->fp, &file_stat);
     result->size = file_stat.st_size / PAGE_SIZE;
     result->entries = (struct STE*)kmalloc(result->size * sizeof(*(result->entries)));
-#if LIST
+#if LIST_ST
     result->first_free_chunk = 0;
     for(i = 0; i < result->size - 1; i++){
          //the chain of free frames is initialized here
@@ -101,8 +120,9 @@ void swapout(swap_table st, uint32_t index, paddr_t paddr, uint32_t page_number,
     struct iovec iov;
 
     //update the first_free_chunk index
-#if LIST  
+#if LIST_ST  
     delete_free_chunk(st, index);
+    insert_into_process_chunk_list(st, index, curthread->t_proc);
 #endif
     uio_kinit(&iov, &swap_uio, (void*)PADDR_TO_KVADDR(paddr & PAGE_FRAME), PAGE_SIZE, index*PAGE_SIZE, UIO_WRITE);
   
@@ -133,15 +153,16 @@ void swapin(swap_table st, uint32_t index, paddr_t paddr){
     result=VOP_READ(st->fp, &swap_uio);
     if(result) 
         panic("VM: SWAPIN Failed");
-#if LIST
+#if LIST_ST
     //manage the free chunk list (add a free chunk)
+    delete_process_chunk(st, index);
     insert_into_free_chunk_list(st, index);
 #endif
 }
 
 int getFirstFreeChunckIndex(swap_table st){
 
-#if LIST
+#if LIST_ST
     if(!IS_FULL(st))
         return st->first_free_chunk;
     
@@ -185,9 +206,10 @@ void elf_to_swap(swap_table st, struct vnode *v, off_t offset, uint32_t init_pag
                     panic("Failed loading elf into swap area!\n");
                 
             }
-#if LIST
+#if LIST_ST
             // Add page into swap table
             delete_free_chunk(st,chunk_index);
+            insert_into_process_chunk_list(st, chunk_index, curthread->t_proc);
 #endif
             st->entries[chunk_index].hi = SET_SWAPPED(SET_PID(SET_PN(st->entries[chunk_index].hi, init_page_n), PID), 0);
             //manage the free chunk list
@@ -235,9 +257,10 @@ void elf_to_swap(swap_table st, struct vnode *v, off_t offset, uint32_t init_pag
         result = VOP_WRITE(st->fp, &ku_swap);
         if(result) 
             panic("Failed loading elf into swap area!\n");
-#if LIST
+#if LIST_ST
         // Add page into swap table
         delete_free_chunk(st, chunk_index);
+        insert_into_process_chunk_list(st, chunk_index, curthread->t_proc);
 #endif
         st->entries[chunk_index].hi = SET_SWAPPED(SET_PID(SET_PN(st->entries[chunk_index].hi, init_page_n), PID), 0);
          //manage the free chunk list
@@ -248,11 +271,21 @@ void elf_to_swap(swap_table st, struct vnode *v, off_t offset, uint32_t init_pag
 }
 
 int getSwapChunk(swap_table st, vaddr_t faultaddress, pid_t pid){
-    uint32_t page_n = faultaddress >> 12;
-    for(uint32_t i = 0; i < st->size; i++){
+    uint32_t page_n = faultaddress >> 12, i;
+#if LIST_ST
+    (void)pid;
+    for(i = curthread->t_proc->start_st_i; ; i = st->entries[i].next){
+        if(GET_PN(st->entries[i].hi) == page_n)
+            return i;
+        if(!HAS_CHAIN(st->entries[i].hi))
+            break;
+    }
+#else
+    for(i = 0; i < st->size; i++){
         if(GET_PN(st->entries[i].hi) == page_n && GET_PID(st->entries[i].hi) == (uint32_t)pid && !IS_SWAPPED(st->entries[i].hi))
             return i;
     }
+#endif
     return -1;
 }
 
@@ -260,7 +293,8 @@ void all_proc_chunk_out(swap_table st){
     for(uint32_t i = 0; i < st->size; i++){
         if(GET_PID(st->entries[i].hi) == (uint32_t)curproc->p_pid){
             st->entries[i].hi = SET_SWAPPED(st->entries[i].hi, 1);
-#if LIST
+#if LIST_ST
+            delete_process_chunk(st, i);
             insert_into_free_chunk_list(st, i);
 #endif
         }
@@ -274,6 +308,9 @@ void chunks_fork(swap_table st, pid_t src_pid, pid_t dst_pid){
     char buffer[PAGE_SIZE / 2];
     struct uio swap_uio;
     struct iovec iov;
+#if LIST_ST
+    struct proc *p;
+#endif
     uint32_t incr = PAGE_SIZE / 2, offset_src, offset_dst;
     for(i = 0; i < st->size; i++){
         if(GET_PID(st->entries[i].hi) == (uint32_t)src_pid && !IS_SWAPPED(st->entries[i].hi)){
@@ -295,8 +332,11 @@ void chunks_fork(swap_table st, pid_t src_pid, pid_t dst_pid){
                 if(result) 
                     panic("Failed forking chunks!\n");
             }
-#if LIST
+#if LIST_ST
             delete_free_chunk(st, free_chunk);
+            p = proc_search_pid(dst_pid);
+            if(p != NULL)
+                insert_into_process_chunk_list(st, free_chunk, p);
 #endif
             st->entries[free_chunk].hi = SET_PN(SET_PID(SET_SWAPPED(st->entries[free_chunk].hi, 0), dst_pid), GET_PN(st->entries[i].hi));
              //manage the free chunk list
@@ -310,14 +350,14 @@ void chunks_fork(swap_table st, pid_t src_pid, pid_t dst_pid){
 void print_chunks(swap_table st){
     kprintf("\n");
     for(uint32_t i = 0; i < 10; i++){
-#if LIST
-        kprintf("%d) : %x SWAPPED: %d  NEXT: %x\n", i, st->entries[i].hi, IS_SWAPPED(st->entries[i].hi), st->entries[i].next);
+#if LIST_ST
+        kprintf("%d) : %x SWAPPED: %d  NEXT: %x PREV: %x CHAIN: %d HAS_PREV: %d\n", i, st->entries[i].hi, IS_SWAPPED(st->entries[i].hi), st->entries[i].next, st->entries[i].prev, HAS_CHAIN(st->entries[i].hi), HAS_PREV(st->entries[i].hi));
 #else
         kprintf("%d) : %x SWAPPED: %d\n", i, st->entries[i].hi, IS_SWAPPED(st->entries[i].hi));
 #endif
     }
-#if LIST
-    kprintf("last) : %x SWAPPED: %d  NEXT: %x\n" , st->entries[st->last_free_chunk].hi, IS_SWAPPED(st->entries[st->last_free_chunk].hi),st->entries[st->last_free_chunk].next);
+#if LIST_ST
+    kprintf("last) : %x SWAPPED: %d  NEXT: %x PREV: %x CHAIN: %d HAS_PREV: %d\n" , st->entries[st->last_free_chunk].hi, IS_SWAPPED(st->entries[st->last_free_chunk].hi),st->entries[st->last_free_chunk].next, st->entries[st->last_free_chunk].prev, HAS_CHAIN(st->entries[st->last_free_chunk].hi), HAS_PREV(st->entries[st->last_free_chunk].hi));
 #else
     kprintf("last) : %x SWAPPED: %d" , st->entries[st->size - 1].hi, IS_SWAPPED(st->entries[st->size - 1].hi));
 #endif
@@ -343,7 +383,7 @@ void checkDuplicatedEntries(swap_table st){
     return;
 }
 
-#if LIST
+#if LIST_ST
 void 
 delete_free_chunk(swap_table st,uint32_t chunk_to_delete){
     if(st->first_free_chunk == chunk_to_delete){
@@ -392,4 +432,27 @@ void insert_into_free_chunk_list(swap_table st, uint32_t chunk_to_add){
         st->entries[st->last_free_chunk].hi = SET_PREV(SET_CHAIN(st->entries[st->last_free_chunk].hi,0),1);
     }
 }
+
+void delete_process_chunk(swap_table st, uint32_t chunk_to_delete){
+    if(curthread->t_proc->n_chunks != 1){
+        if(curthread->t_proc->start_st_i == chunk_to_delete){
+            curthread->t_proc->start_st_i = st->entries[chunk_to_delete].next;
+            st->entries[chunk_to_delete].hi = SET_CHAIN(st->entries[chunk_to_delete].hi, 0);
+            st->entries[curthread->t_proc->start_st_i].hi = SET_PREV(st->entries[curthread->t_proc->start_st_i].hi, 0);
+        }else if(curthread->t_proc->last_st_i == chunk_to_delete){
+            curthread->t_proc->last_st_i = st->entries[chunk_to_delete].prev;
+            st->entries[curthread->t_proc->last_st_i].hi = SET_CHAIN(st->entries[curthread->t_proc->last_st_i].hi, 0);
+            st->entries[chunk_to_delete].hi = SET_PREV(st->entries[chunk_to_delete].hi, 0);
+        }else{
+            st->entries[st->entries[chunk_to_delete].prev].next = st->entries[chunk_to_delete].next;
+            st->entries[st->entries[chunk_to_delete].next].prev = st->entries[chunk_to_delete].prev;
+            st->entries[chunk_to_delete].hi = SET_CHAIN(SET_PREV(st->entries[chunk_to_delete].hi, 0), 0);
+        }
+    }else{
+        curthread->t_proc->last_st_i = curthread->t_proc->start_st_i;
+        st->entries[chunk_to_delete].hi = SET_CHAIN(SET_PREV(st->entries[chunk_to_delete].hi, 0), 0);
+    }
+    curthread->t_proc->n_chunks--;
+}
+
 #endif

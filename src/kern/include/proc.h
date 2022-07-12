@@ -40,6 +40,7 @@
 #include <spinlock.h>
 #if OPT_PAGING
 #include <limits.h>
+#include <vm.h>
 #endif
 
 struct addrspace;
@@ -84,6 +85,11 @@ struct proc {
 		uint32_t start_pt_i;			/*Page table index representing frames list head*/
 		uint32_t last_pt_i;				/*Page table index representing frames list tail*/
 		uint32_t n_frames;				/*Number of frames owned by the process*/
+#if LIST_ST
+		uint32_t start_st_i;			/*Swap table index representing chunks list head*/
+		uint32_t last_st_i;				/*Swap table index representing chunks list tail*/
+		uint32_t n_chunks;				/*Number of chunks owned by the process*/
+#endif
 		struct openfile *fileTable[OPEN_MAX];
 #endif
 

@@ -32,4 +32,6 @@ void delete_free_chunk(swap_table st,uint32_t chunk_to_delete);
 
 void insert_into_free_chunk_list(swap_table st, uint32_t chunk_to_add);
 
+void delete_process_chunk(swap_table st, uint32_t chunk_to_delete);
+
 #endif
