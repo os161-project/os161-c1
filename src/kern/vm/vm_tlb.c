@@ -39,7 +39,11 @@ int TLB_Insert(vaddr_t faultaddress, paddr_t paddr){
 	/* statistics */ add_TLB_fault_type(TLB_REPLACE);
 	//write in the tlb at index = victim
 	hi=faultaddress;
-	lo=paddr | TLBLO_DIRTY | TLBLO_VALID;
+	if(is_code_seg==1){
+		lo=paddr | TLBLO_VALID;
+	}else
+		lo=paddr | TLBLO_DIRTY | TLBLO_VALID;
+
 	tlb_write(hi,lo,victim);
 
     return 0;
@@ -69,7 +73,7 @@ int is_code_segment(vaddr_t vaddr){
 	return 0;
 }
 
-int TLB_Invalidate_all(void){
+int TLB_Invalidate_all(void){ 
 	// Code to invalidate here
 	int i;
 	/* Avoiding calls to this function at every thread-switch */
