@@ -204,7 +204,7 @@ paddr_t alloc_n_contiguos_pages(uint32_t npages, page_table pt){
         if(IS_VALID(pt->entries[i].hi)){
             free_chunk_index= getFirstFreeChunckIndex(ST);
             if(free_chunk_index == -1){
-                panic("Wait...is swap area full?!");
+                panic("\nOut of swap space\n");
             }
             spinlock_release(&k_lock);
             swapout(ST, free_chunk_index, (i*PAGE_SIZE) + pt->mem_base_addr, GET_PN(pt->entries[i].hi), GET_PID(pt->entries[i].low), true);
@@ -257,7 +257,7 @@ paddr_t insert_page(page_table pt, vaddr_t vaddr, swap_table ST, int suggested_f
             frame_address = frame_n * PAGE_SIZE + pt->mem_base_addr;
             free_chunk_index = getFirstFreeChunckIndex(ST);
             if(free_chunk_index == -1){
-                panic("Wait...is swap area full?!\n");
+                panic("\nOut of swap space\n");
             }
             swapout(ST, free_chunk_index, frame_address, GET_PN(pt->entries[frame_n].hi), GET_PID(pt->entries[frame_n].low), true);
             remove_page(pt, frame_n);
@@ -322,7 +322,7 @@ void pages_fork(page_table pt, uint32_t start_src_frame, pid_t dst_pid){
     for(i = start_src_frame; ; i = GET_NEXT(pt->entries[i].low)){
             free_chunk_index = getFirstFreeChunckIndex(ST);
             if(free_chunk_index == -1){
-                panic("Wait...is swap area full?!\n");
+                panic("\nOut of swap space\n");
             }
             frame_address = i * PAGE_SIZE + pt->mem_base_addr;
             swapout(ST, free_chunk_index, frame_address, GET_PN(pt->entries[i].hi), dst_pid, false);

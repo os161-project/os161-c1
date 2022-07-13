@@ -204,6 +204,8 @@ as_prepare_load(struct addrspace *as)
 	/*
 	 * Write this.
 	 */
+	//bzero((void*)as->as_vbase1, as->as_npages1*PAGE_SIZE);
+	//bzero((void*)as->as_vbase2, as->as_npages2*PAGE_SIZE);
 
 	(void)as;
 	return 0;

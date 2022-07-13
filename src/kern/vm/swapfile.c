@@ -143,8 +143,6 @@ void swapin(swap_table st, uint32_t index, paddr_t paddr){
     struct uio swap_uio;
     struct iovec iov;
 
-
-
     uio_kinit(&iov, &swap_uio, (void*)PADDR_TO_KVADDR(paddr & PAGE_FRAME), PAGE_SIZE, index*PAGE_SIZE, UIO_READ);
 
     // Remove page from swap table
@@ -153,6 +151,7 @@ void swapin(swap_table st, uint32_t index, paddr_t paddr){
     result=VOP_READ(st->fp, &swap_uio);
     if(result) 
         panic("VM: SWAPIN Failed");
+
 #if LIST_ST
     //manage the free chunk list (add a free chunk)
     delete_process_chunk(st, index);
@@ -188,7 +187,7 @@ void elf_to_swap(swap_table st, struct vnode *v, off_t offset, uint32_t init_pag
         chunk_index = getFirstFreeChunckIndex(st);
         if(chunk_index == -1){
             // Handle full swapfile
-            panic("Swap area full!\n");
+            panic("Out of swap space\n");
             return;
         }else{
             chunk_offset = chunk_index * PAGE_SIZE;
@@ -221,7 +220,7 @@ void elf_to_swap(swap_table st, struct vnode *v, off_t offset, uint32_t init_pag
     chunk_index = getFirstFreeChunckIndex(st);
     if(chunk_index == -1){
         // Handle full swapfile
-        panic("Swap area full!\n");
+        panic("Out of swap space\n");
         return;
     }else{
         chunk_offset = chunk_index * PAGE_SIZE;
@@ -316,7 +315,7 @@ void chunks_fork(swap_table st, pid_t src_pid, pid_t dst_pid){
         if(GET_PID(st->entries[i].hi) == (uint32_t)src_pid && !IS_SWAPPED(st->entries[i].hi)){
             free_chunk = getFirstFreeChunckIndex(st);
             if(free_chunk == -1)
-                panic("Wait...is swap area full?!\n");
+                panic("Out of swap space\n");
             offset_src = i * PAGE_SIZE;
             offset_dst = free_chunk * PAGE_SIZE;
             for(j = 0; j < 2; j++, offset_src += incr, offset_dst += incr){

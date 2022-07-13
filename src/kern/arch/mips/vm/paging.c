@@ -199,6 +199,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	switch (faulttype) {
 	    case VM_FAULT_READONLY:
 			//try to access a read-only segment causes a fault, terminate the process
+			kprintf("\nWrite attempt on read-only code segment!\nI think I'll end the process...\n");
 			sys__exit(0);
 			break;
 	    case VM_FAULT_READ:
