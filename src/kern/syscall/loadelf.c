@@ -87,9 +87,8 @@ load_segment(struct addrspace *as, struct vnode *v,
 	     int is_executable)
 {
 #if OPT_PAGING
-	elf_to_swap(ST, v, offset, vaddr >> 12, memsize, curproc->p_pid);
+	elf_to_swap(ST, v, offset, vaddr >> 12, memsize, filesize, curproc->p_pid);
 	(void)as;
-	(void)filesize;
 	(void)is_executable;
 	return 0;
 #else
@@ -172,7 +171,7 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 	struct uio ku;
 	struct addrspace *as;
 #if OPT_PAGING
-	size_t mem_tot = 0;
+	// size_t mem_tot = 0;
 #endif
 	as = proc_getas();
 
@@ -302,10 +301,10 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 			return ENOEXEC;
 		}
 #if OPT_PAGING
-		mem_tot += ph.p_memsz;
+		// mem_tot += ph.p_memsz;
 
 		result = load_segment(as, v, ph.p_offset, ph.p_vaddr,
-				      mem_tot, ph.p_filesz,
+				      /*mem_tot*/ ph.p_memsz, ph.p_filesz,
 				      ph.p_flags & PF_X);
 
 #else

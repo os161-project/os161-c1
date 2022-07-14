@@ -175,24 +175,65 @@ int getFirstFreeChunckIndex(swap_table st){
     return -1;
     
 }
+ 
 
-void elf_to_swap(swap_table st, struct vnode *v, off_t offset, uint32_t init_page_n, size_t memsize, pid_t PID){
+void elf_to_swap(swap_table st, struct vnode *v, off_t offset, uint32_t init_page_n, size_t memsize, size_t filesize, pid_t PID){
     struct iovec iov_swap, iov_elf;
 	struct uio ku_swap, ku_elf;
     char buffer[PAGE_SIZE / 2];
-    int chunk_index, result, chunk_offset;
-    uint32_t n_chuncks = (memsize + PAGE_SIZE - 1 - offset) / PAGE_SIZE, i, j, incr = PAGE_SIZE / 2;
-    for(i = 0; i < n_chuncks - 1; i++, init_page_n++){
+    static char zero_page[PAGE_SIZE];
+    static char zero_half_page[PAGE_SIZE/2];
+    int chunk_index, result, chunk_offset = -1;
+    uint32_t n_full_chunks = filesize / PAGE_SIZE, i, j, incr = PAGE_SIZE / 2;
+    uint32_t last_chunk_size = (filesize % PAGE_SIZE); // Could be 0 if the size in memory is a multiple of the page size
+    uint32_t n_empty_chunks = 0;
+
+    if(memsize - filesize > 0) {
+        if(last_chunk_size + (memsize - filesize) <= PAGE_SIZE) {
+            n_empty_chunks = 0;
+        } else {
+            n_empty_chunks = (memsize - filesize - 1 + last_chunk_size)/PAGE_SIZE;
+        }
+    }
+
+    for(i = 0; i < n_full_chunks; i++, init_page_n++){
         // Get first chunck available
         chunk_index = getFirstFreeChunckIndex(st);
         if(chunk_index == -1){
             // Handle full swapfile
             panic("Out of swap space\n");
-            return;
         }else{
             chunk_offset = chunk_index * PAGE_SIZE;
-            for(j = 0; j < 2; j++, offset += incr, chunk_offset += incr){
+            for(j = 0; j < 2; j++){
                 // Read one page from elf file
+                uio_kinit(&iov_elf, &ku_elf, buffer, incr, offset, UIO_READ);
+                result = VOP_READ(v, &ku_elf);
+                if(result) 
+                    panic("Failed loading elf into swap area!\n");
+
+                uio_kinit(&iov_swap, &ku_swap, buffer, incr, chunk_offset, UIO_WRITE);
+                result = VOP_WRITE(st->fp, &ku_swap);
+                if(result) 
+                    panic("Failed loading elf into swap area!\n");
+                chunk_offset += incr;
+                offset += incr;
+            }
+#if LIST_ST
+            // Add page into swap table
+            delete_free_chunk(st,chunk_index);
+            insert_into_process_chunk_list(st, chunk_index, curthread->t_proc);
+#endif
+            st->entries[chunk_index].hi = SET_SWAPPED(SET_PID(SET_PN(st->entries[chunk_index].hi, init_page_n), PID), 0);
+        }
+    }
+    if(last_chunk_size != 0) {
+        chunk_index = getFirstFreeChunckIndex(st);
+        if(chunk_index == -1){
+            // Handle full swapfile
+            panic("Out of swap space\n");
+        } else {
+            chunk_offset = chunk_index * PAGE_SIZE;
+            if(last_chunk_size > incr) {
                 uio_kinit(&iov_elf, &ku_elf, buffer, incr, offset, UIO_READ);
                 result = VOP_READ(v, &ku_elf);
                 if(result) 
@@ -203,70 +244,67 @@ void elf_to_swap(swap_table st, struct vnode *v, off_t offset, uint32_t init_pag
                 result = VOP_WRITE(st->fp, &ku_swap);
                 if(result) 
                     panic("Failed loading elf into swap area!\n");
-                
+                offset += incr;
+                chunk_offset += incr; 
+                last_chunk_size -= incr;
+                bzero((void*)buffer, incr);
+                uio_kinit(&iov_elf, &ku_elf, buffer, last_chunk_size, offset, UIO_READ);
+                result = VOP_READ(v, &ku_elf);
+                if(result) 
+                    panic("Failed loading elf into swap area!\n");
+                /* Manually zero-filling with a loop - Maybe unefficient */
+                //for(i = last_chunk_size; i < incr; i++) buffer[i] = (char) 0;
+                // Write page into swapfile
+                uio_kinit(&iov_swap, &ku_swap, buffer, incr, chunk_offset, UIO_WRITE);
+                result = VOP_WRITE(st->fp, &ku_swap);
+                if(result) 
+                    panic("Failed loading elf into swap area!\n");
+            } else {
+                /* I need to zero-fill a portion of the page which is bigger than half-a-page */
+                /* Here I'm writing the first portion of the page, completing the first half with zeros */
+                bzero((void*)buffer, incr);
+                uio_kinit(&iov_elf, &ku_elf, buffer, last_chunk_size, offset, UIO_READ);
+                result = VOP_READ(v, &ku_elf);
+                if(result) 
+                    panic("Failed loading elf into swap area!\n");
+                //for(i = last_chunk_size; i < incr; i++) buffer[i] = (char) 0;
+                uio_kinit(&iov_swap, &ku_swap, buffer, incr, chunk_offset, UIO_WRITE);
+                result = VOP_WRITE(st->fp, &ku_swap);
+                if(result) 
+                    panic("Failed loading elf into swap area!\n");
+                /* Then, of course, I need to zero-fill also the second portion of the page */
+                chunk_offset += incr;
+                uio_kinit(&iov_swap, &ku_swap, zero_half_page, incr, chunk_offset, UIO_WRITE);
+                result = VOP_WRITE(st->fp, &ku_swap);
+                if(result) 
+                    panic("Failed loading elf into swap area!\n");
+                chunk_offset += incr;
             }
-#if LIST_ST
-            // Add page into swap table
-            delete_free_chunk(st,chunk_index);
-            insert_into_process_chunk_list(st, chunk_index, curthread->t_proc);
-#endif
-            st->entries[chunk_index].hi = SET_SWAPPED(SET_PID(SET_PN(st->entries[chunk_index].hi, init_page_n), PID), 0);
-            //manage the free chunk list
-            //since we have called the getFirstFreeChunkIndex we know that the st is not full yet
-            
-           
+            st->entries[chunk_index].hi = SET_SWAPPED(SET_PID(SET_PN(st->entries[chunk_index].hi, init_page_n++), PID), 0);
         }
     }
-    chunk_index = getFirstFreeChunckIndex(st);
-    if(chunk_index == -1){
-        // Handle full swapfile
-        panic("Out of swap space\n");
-        return;
-    }else{
-        chunk_offset = chunk_index * PAGE_SIZE;
-        if(memsize - offset > incr){
-            // Read one page from elf file
-            uio_kinit(&iov_elf, &ku_elf, buffer, incr, offset, UIO_READ);
-            result = VOP_READ(v, &ku_elf);
-            if(result) 
-                panic("Failed loading elf into swap area!\n");
-
-            // Write page into swapfile
-            uio_kinit(&iov_swap, &ku_swap, buffer, incr, chunk_offset, UIO_WRITE);
-            result = VOP_WRITE(st->fp, &ku_swap);
-            if(result) 
-                panic("Failed loading elf into swap area!\n");
-            offset += incr;
-            chunk_offset += incr;
+    for(i = 0; i < n_empty_chunks; i++, init_page_n++){
+        // Get first chunck available
+        chunk_index = getFirstFreeChunckIndex(st);
+        if(chunk_index == -1){
+            // Handle full swapfile
+            panic("Out of swap space\n");
         }
-        uio_kinit(&iov_elf, &ku_elf, buffer, memsize - offset, offset, UIO_READ);
-        result = VOP_READ(v, &ku_elf);
-        if(result) 
-            panic("Failed loading elf into swap area!\n");
-
-        /*ku_elf.uio_resid += (incr - memsize + offset);
-        iov_elf.iov_len += (incr - memsize + offset);
-		result = uiomovezeros((incr - memsize + offset), &ku_elf);
-        if(result) 
-            panic("Failed zeroing the page!\n");
-        */
-        
-        // Write page into swapfile
-        uio_kinit(&iov_swap, &ku_swap, buffer, incr, chunk_offset, UIO_WRITE);
+        chunk_offset = chunk_index * PAGE_SIZE;
+        uio_kinit(&iov_swap, &ku_swap, zero_page, PAGE_SIZE, chunk_offset, UIO_WRITE);
         result = VOP_WRITE(st->fp, &ku_swap);
         if(result) 
             panic("Failed loading elf into swap area!\n");
 #if LIST_ST
         // Add page into swap table
-        delete_free_chunk(st, chunk_index);
+        delete_free_chunk(st,chunk_index);
         insert_into_process_chunk_list(st, chunk_index, curthread->t_proc);
 #endif
         st->entries[chunk_index].hi = SET_SWAPPED(SET_PID(SET_PN(st->entries[chunk_index].hi, init_page_n), PID), 0);
-         //manage the free chunk list
-        //since we have called the getFirstFreeChunkIndex we know that the st is not full yet
-        
-       
+            //manage the free chunk list
+            //since we have called the getFirstFreeChunkIndex we know that the st is not full yet        
     }
+    return;
 }
 
 int getSwapChunk(swap_table st, vaddr_t faultaddress, pid_t pid){

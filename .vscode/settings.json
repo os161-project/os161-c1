@@ -23,6 +23,11 @@
         "array": "c",
         "string_view": "c",
         "initializer_list": "c",
-        "utility": "c"
+        "utility": "c",
+        "*.tcc": "c",
+        "sfs.h": "c",
+        "uio.h": "c",
+        "sfsprivate.h": "c",
+        "errno.h": "c"
     }
 }
