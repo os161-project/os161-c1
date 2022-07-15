@@ -12,6 +12,9 @@
 #define VM_ELF      2
 #define VM_SWAP     3
 
+#define SWAP_0_FILLED   0
+#define SWAP_BLANK      1   
+
 
 void stat_bootstrap(void);
 
@@ -40,6 +43,10 @@ void add_VM_pageFault(int type);
 
 /* Number of page faults that require writing a page to the swap file */
 void add_SWAP_write(void);
+
+
+/* Number of chunks zero-filled or blank (all zeros) on the swap file */
+void add_SWAP_chunk(int type);
 
 /* Print out statistics and eventually some warnings, when shooting down the VM system */
 void print_stats(void);

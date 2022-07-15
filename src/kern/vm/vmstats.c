@@ -20,7 +20,8 @@ struct statistics {
                 tlb_invalidations,  
                 tlb_reloads, 
                 page_faults[4],     // Zeroed, Disk, Elf, Swapfile
-                swap_writes;
+                swap_writes,
+                swap_chunks[2];     // Zero-filled, Blank Chunks
     struct spinlock lock;
 } stat;
 
@@ -81,6 +82,14 @@ add_SWAP_write(void) {
     spinlock_release(&stat.lock);
 }
 
+void 
+add_SWAP_chunk(int type) {
+    spinlock_acquire(&stat.lock);
+    stat.swap_chunks[type]++;
+    spinlock_release(&stat.lock);
+}
+
+
 void
 print_stats(void) {
     /* Check possible inequalities (a.k.a. buggy behaviors) */
@@ -101,6 +110,7 @@ print_stats(void) {
                                 total_page_faults, stat.page_faults[VM_ZEROED], 
                                 stat.page_faults[VM_DISK], stat.page_faults[VM_ELF], stat.page_faults[VM_SWAP]); 
     kprintf("[vm] Swapfile Writes - Total: %5d\n", stat.swap_writes);
+    kprintf("[vm] Swapfile Chunks - Zero-filled: %5d, Blank: %5d\n", stat.swap_chunks[SWAP_0_FILLED], stat.swap_chunks[SWAP_BLANK]);
     spinlock_release(&stat.lock);
 }   
 

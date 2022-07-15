@@ -7,6 +7,7 @@
 #include <vfs.h>
 #include <proc.h>
 #include <current.h>
+#include <vmstats.h>
 
 // S = Swapped bit (1 when not in swap file, 0 when in)
 // C = Chain bit
@@ -265,6 +266,7 @@ void elf_to_swap(swap_table st, struct vnode *v, off_t offset, uint32_t init_pag
                 write_page(st, buffer, incr, chunk_offset, true);
             }
             st->entries[chunk_index].hi = SET_SWAPPED(SET_PID(SET_PN(st->entries[chunk_index].hi, init_page_n++), PID), 0);
+            add_SWAP_chunk(SWAP_0_FILLED);
         }
     }
     for(i = 0; i < n_empty_chunks; i++, init_page_n++){
@@ -282,6 +284,7 @@ void elf_to_swap(swap_table st, struct vnode *v, off_t offset, uint32_t init_pag
         insert_into_process_chunk_list(st, chunk_index, curthread->t_proc);
 #endif
         st->entries[chunk_index].hi = SET_SWAPPED(SET_PID(SET_PN(st->entries[chunk_index].hi, init_page_n), PID), 0);
+        add_SWAP_chunk(SWAP_BLANK);
     }
     return;
 }
