@@ -260,6 +260,7 @@ paddr_t insert_page(page_table pt, vaddr_t vaddr, swap_table ST, int suggested_f
                 panic("\nOut of swap space\n");
             }
             swapout(ST, free_chunk_index, frame_address, GET_PN(pt->entries[frame_n].hi), GET_PID(pt->entries[frame_n].low), true);
+            /*statistics*/add_SWAP_write();
             remove_page(pt, frame_n);
         }else{
             frame_n = pt->first_free_frame;
