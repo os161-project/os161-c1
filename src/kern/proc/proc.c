@@ -449,22 +449,25 @@ proc_signal_end(struct proc *proc)
       lock_acquire(proc->p_lock_cv);
       cv_signal(proc->p_cv, proc->p_lock_cv);
       lock_release(proc->p_lock_cv);
+#else
+	(void)proc;
 #endif
 }
 
 void 
 proc_file_table_copy(struct proc *psrc, struct proc *pdest) {
 #if OPT_PAGING
-  int fd;
-  for (fd=0; fd < OPEN_MAX; fd++) {
-    struct openfile *of = psrc->fileTable[fd];
-    pdest->fileTable[fd] = of;
-    if (of != NULL) {
-      /* incr reference count */
-      openfileIncrRefCount(of);
-    }
-  }
+	int fd;
+	for (fd=0; fd < OPEN_MAX; fd++) {
+		struct openfile *of = psrc->fileTable[fd];
+		pdest->fileTable[fd] = of;
+		if (of != NULL) {
+			/* incr reference count */
+			openfileIncrRefCount(of);
+		}
+	}
+#else
+	(void)psrc;
+	(void)pdest;
 #endif
 }
-
-

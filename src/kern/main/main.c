@@ -50,6 +50,7 @@
 #include <test.h>
 #include <version.h>
 #include "autoconf.h"  // for pseudoconfig
+#include "opt-paging.h"
 
 
 /*
@@ -181,7 +182,9 @@ sys_reboot(int code)
 	}
 
 	/* Print out statistics */
+#if OPT_PAGING
 	vm_shutdown();
+#endif
 	shutdown();
 
 	switch (code) {

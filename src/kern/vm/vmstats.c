@@ -3,13 +3,16 @@
 
 
 #define SASSERT(x) ((x) ? (void)0 : statassert(#x, __FILE__, __LINE__,  __func__))
+#define VERBOSE 0
 
+#if VERBOSE
 static void
 statassert(const char *expr, const char *file, int line, const char *func)
 {
 	kprintf("Warning (inequality): %s, at %s:%d (%s)\n",
 	      expr, file, line, func);
 }
+#endif
 
 struct statistics {
     uint32_t    tlb_faults_total,
@@ -82,9 +85,11 @@ void
 print_stats(void) {
     /* Check possible inequalities (a.k.a. buggy behaviors) */
     spinlock_acquire(&stat.lock);
+#if VERBOSE
     SASSERT(stat.tlb_faults_total == stat.tlb_faults[TLB_FREE] + stat.tlb_faults[TLB_REPLACE]);
     SASSERT(stat.tlb_faults_total == stat.tlb_reloads + stat.page_faults[VM_DISK] + stat.page_faults[VM_ZEROED]);
     SASSERT(stat.page_faults[VM_DISK] == stat.page_faults[VM_ELF] + stat.page_faults[VM_SWAP]);
+#endif
     kprintf("[vm] Collected statistics:\n");
     kprintf("[vm] TLB Faults - Total: %5d, Free: %5d, Replaced: %5d\n", 
                                 stat.tlb_faults_total, stat.tlb_faults[TLB_FREE], stat.tlb_faults[TLB_REPLACE]);

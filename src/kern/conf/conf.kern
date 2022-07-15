@@ -352,7 +352,7 @@ optfile         paging       syscall/file_syscalls.c
 optfile         paging       syscall/proc_syscalls.c
 optfile         paging       vm/addrspace.c
 optofffile      paging       arch/mips/vm/dumbvm.c
-optfile         paging       arch/mips/vm/paging.c
+optfile         paging       vm/paging.c
 
 
 #add files that we will create here
